@@ -1,5 +1,5 @@
 [package]
-name = "async-rustyline"
+name = "rustyline-async"
 version = "0.1.0"
 readme = "README.md"
 edition = "2021"
@@ -13,7 +13,7 @@ termios = "0.3.3"
 thiserror = "1.0.30"
 
 [workspace]
-readline = [ "examples/readline" ]
+members = [ "examples/readline" ]
 
 [package.metadata.nix]
 build = true

@@ -1,69 +1,48 @@
-use async_std::io;
+use async_std::{io, stream, task};
 
-use std::rc::Rc;
+use std::time::Duration;
+
+use futures::prelude::*;
 
 #[async_std::main]
 async fn main() {
+	let mut periodic_timer1 = stream::interval(Duration::from_secs(2));
+	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
+
+	struct StandardIO;
+	impl rustyline_async::IOImpl for StandardIO {
+		type Reader = io::Stdin;
+		type Writer = io::Stdout;
+	}
+	let (mut commands, out_writer) = rustyline_async::init::<StandardIO>(io::stdin(), io::stdout(), "> ".to_owned());
+
+	struct AsyncWriteWrapper<W: AsyncWrite + Unpin>(W);
+	impl<W: AsyncWrite + Unpin> std::io::Write for AsyncWriteWrapper<W> {
+		fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+			task::block_on(self.0.write(buf))
+		}
+
+		fn flush(&mut self) -> io::Result<()> {
+			task::block_on(self.0.flush())
+		}
+	}
+
+	simplelog::WriteLogger::init(log::LevelFilter::Debug, simplelog::Config::default(), AsyncWriteWrapper(out_writer)).unwrap();
 	
-
-	let periodic_timer1 =
-		tokio_core::reactor::Interval::new(std::time::Duration::from_millis(2500), &handle)
-			.unwrap();
-	let periodic_timer2 =
-		tokio_core::reactor::Interval::new(std::time::Duration::from_millis(500), &handle).unwrap();
-
-	/* let stdio = async_readline::RawStdio::new(&handle).unwrap();
-	let (stdin, stdout, _) = stdio.split(); */
-
-	let (commands, rl_writer) = async_readline::init(stdin, stdout);
-
-	let acc1 = Rc::new(RefCell::new(0));
-	let acc2 = acc1.clone();
-	let acc3 = acc1.clone();
-	let connected1 = Rc::new(RefCell::new(false));
-	let connected2 = connected1.clone();
-	let connected3 = connected1.clone();
-
-	let done = commands
-		.map(move |line| {
-			*connected1.borrow_mut() = false;
-			*acc1.borrow_mut() = 0;
-
-			let mut v = vec![];
-			let _ = write!(v, "\n> ");
-			v.append(&mut line.line.clone());
-			v
-		})
-		.select(periodic_timer1.map(|_| {
-			let mut v = vec![];
-			if *connected2.borrow() {
-				*acc2.borrow_mut() += 1;
-				let _ = write!(v, "\nFiles ready: {} ", *acc2.borrow());
+	loop {
+		futures::select! {
+			_ = periodic_timer1.next().fuse() => {
+				log::info!("First timer went off!");
 			}
-			v
-		}))
-		.select(periodic_timer2.map(|_| {
-			let mut v = vec![];
-			if !*connected3.borrow() {
-				*acc3.borrow_mut() += 1;
-				if *acc3.borrow() > 3 {
-					let _ = write!(v, "\nConnected!");
-					*acc3.borrow_mut() = 0;
-					*connected3.borrow_mut() = true;
-				} else {
-					let _ = write!(v, "\nConnecting... ");
+			_ = periodic_timer2.next().fuse() => {
+				log::debug!("Second timer went off!");
+			}
+			command = commands.next().fuse() => if let Some(command) = command {
+				match command {
+					Ok(line) => println!("Received line: {:?}", line),
+					Err(err) => println!("Received err: {:?}", err),
 				}
-			} else if *acc3.borrow() > 10 {
-				let _ = write!(v, "Disconnecting... ");
-				*acc3.borrow_mut() = 0;
-				*connected3.borrow_mut() = false;
-			} else if *acc3.borrow() > 5 {
-				let _ = write!(v, "Error... ");
 			}
-
-			v
-		}))
-		.forward(rl_writer);
-
-	l.run(done).unwrap();
+		}
+	}
 }

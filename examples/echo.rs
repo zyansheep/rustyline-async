@@ -1,14 +1,8 @@
-extern crate async_readline;
 extern crate futures;
-extern crate tokio_core;
 
 use futures::stream::Stream;
-use tokio_core::io::Io;
-use tokio_core::reactor::Core;
 
 use std::io::{self, Write};
-
-use tokio_core::io::{Codec, EasyBuf};
 
 struct CharCodec;
 

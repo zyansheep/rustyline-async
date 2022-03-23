@@ -20,7 +20,7 @@ pub enum AsyncRustyLineError {
 	Utf(#[from] std::str::Utf8Error),
 }
 
-pub trait IOChannel {
+pub trait IOImpl {
 	type Reader: AsyncRead + Unpin;
 	type Writer: AsyncWrite + Unpin;
 }
@@ -30,7 +30,7 @@ pub struct Line {
 	pub text_last_nl: bool,
 }
 
-struct ReadlineInner<C: IOChannel> {
+struct ReadlineInner<C: IOImpl> {
 	stdin: C::Reader,
 	stdout: C::Writer,
 	prompt: String,
@@ -44,15 +44,15 @@ struct ReadlineInner<C: IOChannel> {
 	pending: String,
 }
 
-pub struct Lines<C: IOChannel> {
+pub struct Lines<C: IOImpl> {
 	inner: BiLock<ReadlineInner<C>>,
 }
 
-pub struct Writer<C: IOChannel> {
+pub struct Writer<C: IOImpl> {
 	inner: BiLock<ReadlineInner<C>>,
 }
 
-impl<C: IOChannel> ReadlineInner<C> {
+impl<C: IOImpl> ReadlineInner<C> {
 	fn clear_line(&mut self) {
 		self.pending += "\x1b[2K";
 		self.pending += "\x1b[1000D";
@@ -157,7 +157,7 @@ impl<C: IOChannel> ReadlineInner<C> {
 	}
 }
 
-impl<C: IOChannel> Stream for Lines<C> {
+impl<C: IOImpl> Stream for Lines<C> {
     type Item = Result<String, AsyncRustyLineError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -168,7 +168,7 @@ impl<C: IOChannel> Stream for Lines<C> {
 		Poll::Ready(Some(res))
     }
 }
-impl<C: IOChannel> AsyncWrite for Writer<C> {
+impl<C: IOImpl> AsyncWrite for Writer<C> {
 	fn poll_write(
 			self: Pin<&mut Self>,
 			cx: &mut Context<'_>,
@@ -188,7 +188,7 @@ impl<C: IOChannel> AsyncWrite for Writer<C> {
 	}
 }
 
-pub fn init<C: IOChannel>(stdin: C::Reader, stdout: C::Writer, prompt: String) -> (Lines<C>, Writer<C>) {
+pub fn init<C: IOImpl>(stdin: C::Reader, stdout: C::Writer, prompt: String) -> (Lines<C>, Writer<C>) {
 	let _ = enable_raw_mode();
 	let mut inner = ReadlineInner {
 		stdin: stdin,

@@ -6,6 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-rustyline = { path = "../.." }
-async-std = "1.11.0"
+rustyline-async = { path = "../.." }
+async-std = { version = "1.11.0", features = [ "unstable", "attributes" ] }
+futures = "0.3.21"
+log = "0.4.16"
+pin-project = "1.0.10"
+simplelog = "0.11.2"
+
+[features]
 
