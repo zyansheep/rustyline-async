@@ -1,0 +1,21 @@
+[package]
+name = "async-rustyline"
+version = "0.1.0"
+readme = "README.md"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+futures = "0.3.21"
+futures-util = { version = "0.3.21", features = ["bilock", "unstable"] }
+libc = "0.2.121"
+termios = "0.3.3"
+thiserror = "1.0.30"
+
+[workspace]
+readline = [ "examples/readline" ]
+
+[package.metadata.nix]
+build = true
+toolchain = "nightly"
+nativeBuildInputs = [ "cargo-edit" ]
