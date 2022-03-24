@@ -6,10 +6,13 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+bytes = "0.5.4"
+const_format = "0.2.22"
 futures = "0.3.21"
-futures-util = { version = "0.3.21", features = ["bilock", "unstable"] }
+futures_codec = "0.4.1"
 libc = "0.2.121"
-termios = "0.3.3"
+sluice = "0.5.5"
+termion = "1.5.6"
 thiserror = "1.0.30"
 
 [workspace]

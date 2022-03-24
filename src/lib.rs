@@ -1,223 +1,214 @@
-// TODO: http://rachid.koucha.free.fr/tech_corner/pty_pdip.html
+#![feature(const_mut_refs)]
+#![feature(try_blocks)]
 
-extern crate futures;
-extern crate libc;
-extern crate termios;
+use std::io::{self, Stdout, Write, stdin, stdout};
 
-use std::{pin::Pin, task::{Context, Poll}};
+use futures::prelude::*;
 
-use libc::STDIN_FILENO;
+use input_codec::InputStream;
+use sluice::pipe::{PipeReader, PipeWriter};
 
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, FutureExt, Stream, io, lock::BiLock, ready};
-
+use termion::{clear, cursor, event::{Event, Key}, event, raw::{IntoRawMode, RawTerminal}};
 use thiserror::Error;
 
+mod input_codec;
+
+use input_codec::TermReadAsync;
+
 #[derive(Debug, Error)]
-pub enum AsyncRustyLineError {
+pub enum ReadlineAsyncError {
 	#[error("io: {0}")]
 	IO(#[from] io::Error),
-	#[error("utf: {0}")]
+	#[error("invalid utf8: {0}")]
 	Utf(#[from] std::str::Utf8Error),
+	#[error("end of file")]
+	Eof,
+	#[error("caught CTRL-C")]
+	Interrupted,
 }
 
-pub trait IOImpl {
-	type Reader: AsyncRead + Unpin;
-	type Writer: AsyncWrite + Unpin;
-}
-
-pub struct Line {
-	pub line: Vec<u8>,
-	pub text_last_nl: bool,
-}
-
-struct ReadlineInner<C: IOImpl> {
-	stdin: C::Reader,
-	stdout: C::Writer,
-	prompt: String,
-
+#[derive(Default)]
+pub struct LineState {
 	line: String,
-
-	lines_ready: Vec<String>,
-
-	text_last_nl: bool,
-
-	pending: String,
+	cursor_pos: usize,
+	prompt: String,
 }
 
-pub struct Lines<C: IOImpl> {
-	inner: BiLock<ReadlineInner<C>>,
-}
 
-pub struct Writer<C: IOImpl> {
-	inner: BiLock<ReadlineInner<C>>,
-}
-
-impl<C: IOImpl> ReadlineInner<C> {
-	fn clear_line(&mut self) {
-		self.pending += "\x1b[2K";
-		self.pending += "\x1b[1000D";
+pub const CLEAR_AND_MOVE	: &str = "\x1b[2K\x1b[0E\x1b[0m";
+pub const DELETE			: &str = "\x7f";
+impl LineState {
+	pub fn new(prompt: String) -> Self {
+		Self { prompt, ..Default::default() }
 	}
-
-	fn redraw_line(&mut self) {
-		self.pending += "\x1b[2K";
-		self.pending += "\x1b[1000D";
-		self.pending += &self.prompt;
-		self.pending += &self.line;
+	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
+		write!(term, "{}{}", cursor::Left(1000), clear::CurrentLine)
 	}
-
-	fn leave_prompt(&mut self) {
-		self.clear_line();
-		self.restore_original();
-		if !self.text_last_nl {
-			self.pending += "\x1b[1B";
-			self.pending += "\x1b[1A";
+	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
+		self.clear(term)?;
+		self.render(term)?;
+		Ok(())
+	}
+	fn render(&self, term: &mut impl Write) -> io::Result<()> {
+		write!(term, "{}{}", self.prompt, self.line)?;
+		if self.cursor_pos < self.line.len() {
+			write!(term, "{}", cursor::Left((self.line.len() - self.cursor_pos) as u16))?;
 		}
+		Ok(())
 	}
-
-	fn enter_prompt(&mut self) {
-		self.save_original();
-		if !self.text_last_nl {
-			//write!(self.pending, "\x1b[1E")?;
-			self.pending += "\n";
-			self.clear_line();
-		}
+	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineAsyncError> {
+		self.clear(term)?;
+		term.write(data)?;
+		if !data.ends_with(&['\n' as u8]) { writeln!(term)?; }
+		self.clear(term)?;
+		self.render(term)?;
+		Ok(())
 	}
-
-	fn save_original(&mut self) {
-		self.pending += "\x1b[s";
+	fn print(&self, string: &str, term: &mut impl Write) -> Result<(), ReadlineAsyncError> {
+		self.print_data(string.as_bytes(), term)?;
+		Ok(())
 	}
-
-	fn restore_original(&mut self) {
-		self.pending += "\x1b[u";
-	}
-
-	async fn write_pending(&mut self) -> io::Result<()> {
-		let res = self.stdout.write_all(self.pending.as_bytes()).await;
-		self.pending.clear();
-		res
-	}
-
-	fn handle_char(&mut self, ch: char) {
-		match ch {
+	fn handle_key(&mut self, key: Key, term: &mut impl Write) -> Result<Option<String>, ReadlineAsyncError> {
+		// println!("key: {:?}", key);
+		match key {
 			// Return
-			'\x0d' => self
-				.lines_ready
-				.push(std::mem::replace(&mut self.line, String::new())),
-			// Delete
-			'\x7F' => {
-				let _ = self.line.pop();
+			Key::Char('\n') => {
+				let line = std::mem::replace(&mut self.line, String::new());
+				self.cursor_pos = 0;
+				self.clear_and_render(term)?;
+				return Ok(Some(line))
+			},
+			// Delete character from line
+			Key::Backspace => {
+				if self.cursor_pos != 0 {
+					self.cursor_pos = self.cursor_pos.saturating_sub(1);
+					if self.cursor_pos == self.line.len() { // If at end of line
+						let _ = self.line.pop();
+					} else {
+						self.line.remove(self.cursor_pos);
+					}
+					self.clear_and_render(term)?;
+				}
+				
 			}
-			// End of transmission
-			'\x04' => {
-				let _ = self.line.pop();
+			// End of transmission (CTRL-D)
+			Key::Ctrl('d') => {
+				Err(ReadlineAsyncError::Eof)?
 			}
-			_ => self.line.push(ch),
+			// End of text (CTRL-C)
+			Key::Ctrl('c') => {
+				self.print(&format!("{}{}", self.prompt, self.line), term)?;
+				self.line.clear();
+				self.cursor_pos = 0;
+				self.clear_and_render(term)?;
+			}
+			Key::Left => {
+				if self.cursor_pos > 0 {
+					self.cursor_pos = self.cursor_pos.saturating_sub(1);
+					write!(term, "{}", cursor::Left(1))?;
+				}
+			}
+			Key::Right => {
+				let new_pos = self.cursor_pos + 1;
+				if new_pos <= self.line.len() {
+					write!(term, "{}", cursor::Right(1))?;
+					self.cursor_pos = new_pos;
+				}
+			}
+			// Add character to line and output
+			Key::Char(c) => {
+				if self.cursor_pos == self.line.len() {
+					self.line.push(c);
+					self.cursor_pos += 1;
+					write!(term, "{}", c)?;
+				} else {
+					self.cursor_pos += 1;
+					self.line.insert(self.cursor_pos, c);
+					self.clear_and_render(term)?;
+				}
+			},
+			_ => {},
 		}
-	}
-
-	async fn next_command(&mut self) -> Result<String, AsyncRustyLineError> {
-		let mut tmp_buf = [0u8; 16];
-
-		loop {
-			let _ = self.write_pending().await;
-
-			if let Some(line) = self.lines_ready.pop() {
-				self.clear_line();
-				let _ = self.write_pending().await;
-				return Ok(line)
-			}
-			// FIXME: 0 means EOF?
-			let bytes_read = self.stdin.read(&mut tmp_buf).await?;
-
-			let string = std::str::from_utf8(&tmp_buf[0..bytes_read])?;
-			for ch in string.chars() {
-				self.handle_char(ch)
-			}
-
-			self.redraw_line();
-		}
-	}
-
-	fn poll_write(&mut self, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
-		if buf.len() > 0 {
-			self.leave_prompt();
-			self.text_last_nl = buf[buf.len() - 1] == 10;
-			let new_string = std::str::from_utf8(buf).map_err(|e|io::Error::new(io::ErrorKind::Other, e))?;
-			self.pending += new_string;
-			self.enter_prompt();
-			self.redraw_line();
-		}
-		Poll::Ready(Ok(buf.len()))
-	}
-
-	fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-		let fut = self.write_pending();
-		futures::pin_mut!(fut);
-		fut.poll_unpin(cx)
+		Ok(None)
 	}
 }
 
-impl<C: IOImpl> Stream for Lines<C> {
-    type Item = Result<String, AsyncRustyLineError>;
+pub struct ReadlineAsync {
+	// stdout_reader: PipeReader,
+	raw_term: RawTerminal<Stdout>,
+	event_stream: InputStream<Event>,
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut guard = ready!(self.inner.poll_lock(cx));
-		let next_command_fut = guard.next_command();
-		futures::pin_mut!(next_command_fut);
-		let res = ready!(next_command_fut.poll_unpin(cx));
-		Poll::Ready(Some(res))
+	line: LineState, // Current line
+}
+
+impl ReadlineAsync {
+	pub fn new(prompt: String, reader: impl AsyncRead + Send + Unpin + 'static) -> Result<Self, ReadlineAsyncError> {
+		//let (stdout_reader, write) = sluice::pipe::pipe();
+		let readline = ReadlineAsync {
+			//stdout_reader,
+			raw_term: stdout().into_raw_mode()?,
+			event_stream: reader.events_stream(),
+			line: LineState::new(prompt), // Current line state
+		};
+		Ok(readline)
+		
+	}
+	pub fn print(&mut self, string: &str) -> Result<(), ReadlineAsyncError> {
+		self.line.print(string, &mut self.raw_term)
+	}
+	pub fn flush(&mut self) -> io::Result<()> {
+		self.raw_term.flush()
+	}
+	pub async fn readline(&mut self) -> Option<Result<String, ReadlineAsyncError>> {
+		// let out_buffer = [0u8; 1024]; // buffers data coming from external sources on its way to stdout
+		let res: Result<String, ReadlineAsyncError> = try {
+			match self.event_stream.next().await {
+				Some(Ok(Event::Key(key))) => {
+					match self.line.handle_key(key, &mut self.raw_term) {
+						Ok(Some(line)) => Result::<_, ReadlineAsyncError>::Ok(line)?,
+						Err(e) => Err(e)?,
+						Ok(None) => return None,
+					}
+				}
+				Some(Ok(_)) => return None,
+				Some(Err(e)) => Err(e)?,
+				None => return None,
+			}
+			/* futures::select! {
+				result = self.stdout_reader.read(&mut out_buffer).fuse() => match result {
+					Ok(bytes_read) => {
+						self.line.print_data(&out_buffer[0..bytes_read], &mut self.raw_out)?;
+						return None
+					}
+					Err(e) => Err(e)?,
+				},
+				result = self.event_stream.next().fuse() => match result {
+					Some(Ok(Event::Key(key))) => {
+						match self.line.handle_key(key, &mut self.raw_out) {
+							Ok(Some(line)) => Result::<_, ReadlineAsyncError>::Ok(line)?,
+							Err(e) => Err(e)?,
+							Ok(None) => return None,
+						}
+					}
+					Some(Ok(_)) => return None,
+					Some(Err(e)) => Err(e)?,
+					None => return None,
+				},
+			} */
+		};
+		Some(res)
+	}
+}
+/* impl Drop for ReadlineAsync {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode(self.orig_term);
     }
-}
-impl<C: IOImpl> AsyncWrite for Writer<C> {
-	fn poll_write(
-			self: Pin<&mut Self>,
-			cx: &mut Context<'_>,
-			buf: &[u8],
-		) -> Poll<io::Result<usize>> {
-			let mut guard = ready!(self.inner.poll_lock(cx));
-			guard.poll_write(buf)
-	}
+} */
 
-	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-		let mut guard = ready!(self.inner.poll_lock(cx));
-		guard.poll_flush(cx)
-	}
 
-	fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-		Poll::Ready(Ok(()))
-	}
-}
-
-pub fn init<C: IOImpl>(stdin: C::Reader, stdout: C::Writer, prompt: String) -> (Lines<C>, Writer<C>) {
-	let _ = enable_raw_mode();
-	let mut inner = ReadlineInner {
-		stdin: stdin,
-		stdout: stdout,
-		prompt,
-		line: String::with_capacity(256),
-		text_last_nl: true,
-		pending: String::with_capacity(256),
-		lines_ready: vec![],
-	};
-
-	let _ = inner.enter_prompt();
-
-	let (l1, l2) = BiLock::new(inner);
-
-	let writer = Writer { inner: l1 };
-	let lines = Lines { inner: l2 };
-	(lines, writer)
-}
-
-#[cfg(test)]
-mod tests {
-	#[test]
-	fn it_works() {}
-}
-
-/// Call this function to enable line editing if you are sure that the stdin you passed is a TTY
-pub fn enable_raw_mode() -> io::Result<termios::Termios> {
-	let mut orig_term = termios::Termios::from_fd(STDIN_FILENO)?;
+/* /// Call this function to enable line editing if you are sure that the stdin you passed is a TTY
+pub fn enable_raw_mode() -> io::Result<Termios> {
+	let mut orig_term = Termios::from_fd(libc::STDIN_FILENO)?;
 
 	// use nix::errno::Errno::ENOTTY;
 	use termios::{
@@ -227,7 +218,7 @@ pub fn enable_raw_mode() -> io::Result<termios::Termios> {
 	/* if !self.stdin_isatty {
 		Err(nix::Error::from_errno(ENOTTY))?;
 	} */
-	termios::tcgetattr(STDIN_FILENO, &mut orig_term)?;
+	termios::tcgetattr(libc::STDIN_FILENO, &mut orig_term)?;
 	let mut raw = orig_term;
 	// disable BREAK interrupt, CR to NL conversion on input,
 	// input parity check, strip high bit (bit 8), output flow control
@@ -239,6 +230,11 @@ pub fn enable_raw_mode() -> io::Result<termios::Termios> {
 	raw.c_lflag &= !(ECHO | ICANON | IEXTEN | ISIG);
 	raw.c_cc[VMIN] = 1; // One character-at-a-time input
 	raw.c_cc[VTIME] = 0; // with blocking read
-	termios::tcsetattr(STDIN_FILENO, termios::TCSADRAIN, &raw)?;
+	termios::tcsetattr(libc::STDIN_FILENO, termios::TCSADRAIN, &raw)?;
 	Ok(orig_term)
 }
+pub fn disable_raw_mode(term: Termios) -> io::Result<()> {
+	let ret = termios::tcsetattr(libc::STDIN_FILENO, termios::TCSADRAIN, &term);
+	println!("Disbaled RAW Terminal");
+	ret
+} */
