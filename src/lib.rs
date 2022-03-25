@@ -1,19 +1,16 @@
 #![feature(const_mut_refs)]
 #![feature(try_blocks)]
 
-use std::io::{self, Stdout, Write, stdin, stdout};
+use std::io::{self, Stdout, Write, stdout};
 
 use futures::prelude::*;
 
-use input_codec::InputStream;
-use sluice::pipe::{PipeReader, PipeWriter};
+use input_codec::{EventStream, event_stream};
 
-use termion::{clear, cursor, event::{Event, Key}, event, raw::{IntoRawMode, RawTerminal}};
+use termion::{clear, cursor, event::{Event, Key}, raw::{IntoRawMode, RawTerminal}};
 use thiserror::Error;
 
 mod input_codec;
-
-use input_codec::TermReadAsync;
 
 #[derive(Debug, Error)]
 pub enum ReadlineAsyncError {
@@ -133,23 +130,24 @@ impl LineState {
 	}
 }
 
-pub struct ReadlineAsync {
-	// stdout_reader: PipeReader,
+/// Structure that contains all the data necessary to read and write lines in a asyncronous manner
+pub struct ReadlineAsync<R: AsyncRead + Unpin> {
 	raw_term: RawTerminal<Stdout>,
-	event_stream: InputStream<Event>,
-
+	event_stream: EventStream<R>, // Stream of events
 	line: LineState, // Current line
 }
 
-impl ReadlineAsync {
-	pub fn new(prompt: String, reader: impl AsyncRead + Send + Unpin + 'static) -> Result<Self, ReadlineAsyncError> {
+impl<R: AsyncRead + Unpin> ReadlineAsync<R> {
+	pub fn new(prompt: String, reader: R) -> Result<Self, ReadlineAsyncError> {
 		//let (stdout_reader, write) = sluice::pipe::pipe();
-		let readline = ReadlineAsync {
+		let mut readline = ReadlineAsync {
 			//stdout_reader,
 			raw_term: stdout().into_raw_mode()?,
-			event_stream: reader.events_stream(),
+			event_stream: event_stream(reader),
 			line: LineState::new(prompt), // Current line state
 		};
+		readline.line.render(&mut readline.raw_term)?;
+		readline.raw_term.flush()?;
 		Ok(readline)
 		
 	}
@@ -174,67 +172,7 @@ impl ReadlineAsync {
 				Some(Err(e)) => Err(e)?,
 				None => return None,
 			}
-			/* futures::select! {
-				result = self.stdout_reader.read(&mut out_buffer).fuse() => match result {
-					Ok(bytes_read) => {
-						self.line.print_data(&out_buffer[0..bytes_read], &mut self.raw_out)?;
-						return None
-					}
-					Err(e) => Err(e)?,
-				},
-				result = self.event_stream.next().fuse() => match result {
-					Some(Ok(Event::Key(key))) => {
-						match self.line.handle_key(key, &mut self.raw_out) {
-							Ok(Some(line)) => Result::<_, ReadlineAsyncError>::Ok(line)?,
-							Err(e) => Err(e)?,
-							Ok(None) => return None,
-						}
-					}
-					Some(Ok(_)) => return None,
-					Some(Err(e)) => Err(e)?,
-					None => return None,
-				},
-			} */
 		};
 		Some(res)
 	}
 }
-/* impl Drop for ReadlineAsync {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode(self.orig_term);
-    }
-} */
-
-
-/* /// Call this function to enable line editing if you are sure that the stdin you passed is a TTY
-pub fn enable_raw_mode() -> io::Result<Termios> {
-	let mut orig_term = Termios::from_fd(libc::STDIN_FILENO)?;
-
-	// use nix::errno::Errno::ENOTTY;
-	use termios::{
-		BRKINT, CS8, ECHO, ICANON, ICRNL, IEXTEN, INPCK, ISIG, ISTRIP, IXON,
-		/* OPOST, */ VMIN, VTIME,
-	};
-	/* if !self.stdin_isatty {
-		Err(nix::Error::from_errno(ENOTTY))?;
-	} */
-	termios::tcgetattr(libc::STDIN_FILENO, &mut orig_term)?;
-	let mut raw = orig_term;
-	// disable BREAK interrupt, CR to NL conversion on input,
-	// input parity check, strip high bit (bit 8), output flow control
-	raw.c_iflag &= !(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-	// we don't want raw output, it turns newlines into straight linefeeds
-	// raw.c_oflag = raw.c_oflag & !(OPOST); // disable all output processing
-	raw.c_cflag |= CS8; // character-size mark (8 bits)
-				// disable echoing, canonical mode, extended input processing and signals
-	raw.c_lflag &= !(ECHO | ICANON | IEXTEN | ISIG);
-	raw.c_cc[VMIN] = 1; // One character-at-a-time input
-	raw.c_cc[VTIME] = 0; // with blocking read
-	termios::tcsetattr(libc::STDIN_FILENO, termios::TCSADRAIN, &raw)?;
-	Ok(orig_term)
-}
-pub fn disable_raw_mode(term: Termios) -> io::Result<()> {
-	let ret = termios::tcsetattr(libc::STDIN_FILENO, termios::TCSADRAIN, &term);
-	println!("Disbaled RAW Terminal");
-	ret
-} */
