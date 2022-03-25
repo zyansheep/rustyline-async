@@ -1,16 +1,16 @@
-use async_std::{io::{self, stdin}, stream, task};
-use rustyline_async::{ReadlineAsync, ReadlineAsyncError};
+use async_std::{io::stdin, stream};
+use rustyline_async::{Readline, ReadlineError};
 
-use std::{time::Duration, io::Write};
+use std::time::Duration;
 
 use futures::prelude::*;
 
 #[async_std::main]
-async fn main() -> Result<(), ReadlineAsyncError> {
+async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer1 = stream::interval(Duration::from_secs(2));
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
-	let mut rl = ReadlineAsync::new("> ".to_owned(), stdin()).unwrap();
+	let mut rl = Readline::new("> ".to_owned(), stdin()).unwrap();
 
 	/* struct AsyncWriteWrapper<W: AsyncWrite + Unpin>(W);
 	impl<W: AsyncWrite + Unpin> std::io::Write for AsyncWriteWrapper<W> {
@@ -38,7 +38,8 @@ async fn main() -> Result<(), ReadlineAsyncError> {
 			command = rl.readline().fuse() => if let Some(command) = command {
 				match command {
 					Ok(line) => rl.print(&format!("Received line: {:?}", line))?,
-					Err(ReadlineAsyncError::Interrupted) => rl.print(&format!("CTRL-C"))?,
+					Err(ReadlineError::Eof) => rl.print("Exiting...")?,
+					Err(ReadlineError::Interrupted) => rl.print(&format!("CTRL-C"))?,
 					Err(err) => {
 						rl.print(&format!("Received err: {:?}", err))?;
 						break;

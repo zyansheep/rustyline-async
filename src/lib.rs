@@ -13,7 +13,7 @@ use thiserror::Error;
 mod input_codec;
 
 #[derive(Debug, Error)]
-pub enum ReadlineAsyncError {
+pub enum ReadlineError {
 	#[error("io: {0}")]
 	IO(#[from] io::Error),
 	#[error("invalid utf8: {0}")]
@@ -53,7 +53,7 @@ impl LineState {
 		}
 		Ok(())
 	}
-	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineAsyncError> {
+	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
 		term.write(data)?;
 		if !data.ends_with(&['\n' as u8]) { writeln!(term)?; }
@@ -61,11 +61,11 @@ impl LineState {
 		self.render(term)?;
 		Ok(())
 	}
-	fn print(&self, string: &str, term: &mut impl Write) -> Result<(), ReadlineAsyncError> {
+	fn print(&self, string: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	fn handle_key(&mut self, key: Key, term: &mut impl Write) -> Result<Option<String>, ReadlineAsyncError> {
+	fn handle_key(&mut self, key: Key, term: &mut impl Write) -> Result<Option<String>, ReadlineError> {
 		// println!("key: {:?}", key);
 		match key {
 			// Return
@@ -90,7 +90,7 @@ impl LineState {
 			}
 			// End of transmission (CTRL-D)
 			Key::Ctrl('d') => {
-				Err(ReadlineAsyncError::Eof)?
+				Err(ReadlineError::Eof)?
 			}
 			// End of text (CTRL-C)
 			Key::Ctrl('c') => {
@@ -131,16 +131,16 @@ impl LineState {
 }
 
 /// Structure that contains all the data necessary to read and write lines in a asyncronous manner
-pub struct ReadlineAsync<R: AsyncRead + Unpin> {
+pub struct Readline<R: AsyncRead + Unpin> {
 	raw_term: RawTerminal<Stdout>,
 	event_stream: EventStream<R>, // Stream of events
 	line: LineState, // Current line
 }
 
-impl<R: AsyncRead + Unpin> ReadlineAsync<R> {
-	pub fn new(prompt: String, reader: R) -> Result<Self, ReadlineAsyncError> {
+impl<R: AsyncRead + Unpin> Readline<R> {
+	pub fn new(prompt: String, reader: R) -> Result<Self, ReadlineError> {
 		//let (stdout_reader, write) = sluice::pipe::pipe();
-		let mut readline = ReadlineAsync {
+		let mut readline = Readline {
 			//stdout_reader,
 			raw_term: stdout().into_raw_mode()?,
 			event_stream: event_stream(reader),
@@ -151,19 +151,19 @@ impl<R: AsyncRead + Unpin> ReadlineAsync<R> {
 		Ok(readline)
 		
 	}
-	pub fn print(&mut self, string: &str) -> Result<(), ReadlineAsyncError> {
+	pub fn print(&mut self, string: &str) -> Result<(), ReadlineError> {
 		self.line.print(string, &mut self.raw_term)
 	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
 	}
-	pub async fn readline(&mut self) -> Option<Result<String, ReadlineAsyncError>> {
+	pub async fn readline(&mut self) -> Option<Result<String, ReadlineError>> {
 		// let out_buffer = [0u8; 1024]; // buffers data coming from external sources on its way to stdout
-		let res: Result<String, ReadlineAsyncError> = try {
+		let res: Result<String, ReadlineError> = try {
 			match self.event_stream.next().await {
 				Some(Ok(Event::Key(key))) => {
 					match self.line.handle_key(key, &mut self.raw_term) {
-						Ok(Some(line)) => Result::<_, ReadlineAsyncError>::Ok(line)?,
+						Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
 						Err(e) => Err(e)?,
 						Ok(None) => return None,
 					}
