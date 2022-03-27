@@ -1,12 +1,13 @@
 #![feature(const_mut_refs)]
 #![feature(try_blocks)]
 
-use std::io::{self, Stdout, Write, stdout};
+use std::{io::{self, Stdout, Write, stdout}, pin::Pin, sync::Arc, task::{Context, Poll}};
 
-use futures::prelude::*;
+use futures::{lock::Mutex, prelude::*};
 
 use input_codec::{EventStream, event_stream};
 
+use sluice::pipe::{PipeReader, PipeWriter};
 use termion::{clear, cursor, event::{Event, Key}, raw::{IntoRawMode, RawTerminal}};
 use thiserror::Error;
 
@@ -30,7 +31,6 @@ pub struct LineState {
 	cursor_pos: usize,
 	prompt: String,
 }
-
 
 pub const CLEAR_AND_MOVE	: &str = "\x1b[2K\x1b[0E\x1b[0m";
 pub const DELETE			: &str = "\x7f";
@@ -56,7 +56,7 @@ impl LineState {
 	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
 		term.write(data)?;
-		if !data.ends_with(&['\n' as u8]) { writeln!(term)?; }
+		if !data.ends_with(&['\n' as u8]) { write!(term, "\n")?; }
 		self.clear(term)?;
 		self.render(term)?;
 		Ok(())
@@ -98,6 +98,7 @@ impl LineState {
 				self.line.clear();
 				self.cursor_pos = 0;
 				self.clear_and_render(term)?;
+				Err(ReadlineError::Interrupted)?
 			}
 			Key::Left => {
 				if self.cursor_pos > 0 {
@@ -130,49 +131,96 @@ impl LineState {
 	}
 }
 
+#[derive(Clone)]
+pub struct SharedWriter {
+	writer: Arc<Mutex<PipeWriter>>,
+}
+impl AsyncWrite for SharedWriter {
+	fn poll_write(
+			self: Pin<&mut Self>,
+			cx: &mut Context<'_>,
+			buf: &[u8],
+		) -> Poll<io::Result<usize>> {
+		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
+		let pin = Pin::new(&mut *guard);
+		pin.poll_write(cx, buf)
+	}
+
+	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
+		let pin = Pin::new(&mut *guard);
+		pin.poll_flush(cx)
+	}
+
+	fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
+		let pin = Pin::new(&mut *guard);
+		pin.poll_close(cx)
+	}
+}
+
 /// Structure that contains all the data necessary to read and write lines in a asyncronous manner
 pub struct Readline<R: AsyncRead + Unpin> {
 	raw_term: RawTerminal<Stdout>,
 	event_stream: EventStream<R>, // Stream of events
+	stdout_reader: PipeReader,
+
 	line: LineState, // Current line
 }
 
 impl<R: AsyncRead + Unpin> Readline<R> {
-	pub fn new(prompt: String, reader: R) -> Result<Self, ReadlineError> {
-		//let (stdout_reader, write) = sluice::pipe::pipe();
+	pub fn new(prompt: String, reader: R) -> Result<(Self, SharedWriter), ReadlineError> {
+		let (stdout_reader, writer) = sluice::pipe::pipe();
 		let mut readline = Readline {
-			//stdout_reader,
 			raw_term: stdout().into_raw_mode()?,
 			event_stream: event_stream(reader),
+			stdout_reader,
 			line: LineState::new(prompt), // Current line state
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.flush()?;
-		Ok(readline)
+		let writer = SharedWriter {
+			writer: Arc::new(Mutex::new(writer))
+		};
+		Ok((readline, writer))
 		
 	}
 	pub fn print(&mut self, string: &str) -> Result<(), ReadlineError> {
 		self.line.print(string, &mut self.raw_term)
 	}
+	pub fn print_data(&mut self, data: &[u8]) -> Result<(), ReadlineError> {
+		self.line.print_data(data, &mut self.raw_term)
+	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
 	}
 	pub async fn readline(&mut self) -> Option<Result<String, ReadlineError>> {
-		// let out_buffer = [0u8; 1024]; // buffers data coming from external sources on its way to stdout
+		let mut out_buffer = [0u8; 2048]; // buffers data coming from external sources on its way to stdout
 		let res: Result<String, ReadlineError> = try {
-			match self.event_stream.next().await {
-				Some(Ok(Event::Key(key))) => {
-					match self.line.handle_key(key, &mut self.raw_term) {
-						Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
-						Err(e) => Err(e)?,
-						Ok(None) => return None,
+			futures::select! {
+				event = self.event_stream.next().fuse() => match event {
+					Some(Ok(Event::Key(key))) => {
+						match self.line.handle_key(key, &mut self.raw_term) {
+							Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
+							Err(e) => Err(e)?,
+							Ok(None) => return None,
+						}
 					}
+					Some(Ok(_)) => return None,
+					Some(Err(e)) => Err(e)?,
+					None => return None,
+				},
+				result = self.stdout_reader.read(&mut out_buffer).fuse() => match result {
+					Ok(bytes_read) => {
+						self.print_data(&out_buffer[0..bytes_read])?;
+						return None
+					},
+					Err(e) => Err(e)?
 				}
-				Some(Ok(_)) => return None,
-				Some(Err(e)) => Err(e)?,
-				None => return None,
 			}
+			
 		};
 		Some(res)
 	}
 }
+

@@ -1,7 +1,9 @@
-use async_std::{io::stdin, stream};
+#![feature(try_blocks)]
+
+use async_std::{io::{self, stdin}, stream, task};
 use rustyline_async::{Readline, ReadlineError};
 
-use std::time::Duration;
+use std::{time::Duration, io::Write};
 
 use futures::prelude::*;
 
@@ -10,12 +12,15 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer1 = stream::interval(Duration::from_secs(2));
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
-	let mut rl = Readline::new("> ".to_owned(), stdin()).unwrap();
+	let (mut rl, writer) = Readline::new("> ".to_owned(), stdin()).unwrap();
 
-	/* struct AsyncWriteWrapper<W: AsyncWrite + Unpin>(W);
-	impl<W: AsyncWrite + Unpin> std::io::Write for AsyncWriteWrapper<W> {
+	#[derive(Clone)]
+	struct AsyncWriteWrapper<W: AsyncWrite + Unpin + Send + Clone>(W);
+	impl<W: AsyncWrite + Unpin + Send + Clone> std::io::Write for AsyncWriteWrapper<W> {
 		fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-			task::block_on(self.0.write(buf))
+			let ret = task::block_on(self.0.write(buf))?;
+			task::block_on(self.0.flush())?;
+			Ok(ret)
 		}
 
 		fn flush(&mut self) -> io::Result<()> {
@@ -23,32 +28,39 @@ async fn main() -> Result<(), ReadlineError> {
 		}
 	}
 
-	let stdout = AsyncWriteWrapper(writer);
-	simplelog::WriteLogger::init(log::LevelFilter::Debug, simplelog::Config::default(), stdout).unwrap(); */
-	
-	loop {
-		futures::select! {
-			_ = periodic_timer1.next().fuse() => {
-				rl.print("First timer went off!")?;
-				// log::info!("First timer went off!");
-			}
-			_ = periodic_timer2.next().fuse() => {
-				rl.print("Second timer went off!")?;
-			}
-			command = rl.readline().fuse() => if let Some(command) = command {
-				match command {
-					Ok(line) => rl.print(&format!("Received line: {:?}", line))?,
-					Err(ReadlineError::Eof) => rl.print("Exiting...")?,
-					Err(ReadlineError::Interrupted) => rl.print(&format!("CTRL-C"))?,
-					Err(err) => {
-						rl.print(&format!("Received err: {:?}", err))?;
-						break;
-					},
+	let mut stdout = AsyncWriteWrapper(writer.clone());
+	simplelog::WriteLogger::init(log::LevelFilter::Debug, simplelog::Config::default(), stdout.clone()).unwrap();
+
+
+	let join = task::spawn(async move {
+		
+		let ret: Result<(), ReadlineError> = try { loop {
+			futures::select! {
+				_ = periodic_timer1.next().fuse() => {
+					write!(stdout, "First timer went off!")?;
+				}
+				_ = periodic_timer2.next().fuse() => {
+					//write!(stdout_2, "Second timer went off!")?;
+					task::spawn_blocking(||log::info!("Second timer went off!"));
+					
+				}
+				command = rl.readline().fuse() => if let Some(command) = command {
+					match command {
+						Ok(line) => write!(stdout, "Received line: {}", line)?,
+						Err(ReadlineError::Eof) =>{ write!(stdout, "Exiting...")?; break },
+						Err(ReadlineError::Interrupted) => write!(stdout, "CTRL-C")?,
+						Err(err) => {
+							write!(stdout, "Received err: {:?}", err)?;
+							break;
+						},
+					}
 				}
 			}
-		}
-		rl.flush()?;
-	}
+			rl.flush()?;
+		}};
+		ret
+	});
+	
+	println!("Exited with: {:?}", join.await);
 	Ok(())
-	// println!("Exited with: {:?}", join.await);
 }
