@@ -1,9 +1,6 @@
 #![feature(try_blocks)]
 
-use async_std::{
-	io::stdin,
-	stream, task,
-};
+use async_std::{stream, task};
 use rustyline_async::{Readline, ReadlineError};
 
 use std::{io::Write, time::Duration};
@@ -15,7 +12,7 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer1 = stream::interval(Duration::from_secs(2));
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
-	let (mut rl, mut stdout) = Readline::new("> ".to_owned(), stdin()).unwrap();
+	let (mut rl, mut stdout) = Readline::new("> ".to_owned()).unwrap();
 
 	simplelog::WriteLogger::init(
 		log::LevelFilter::Debug,

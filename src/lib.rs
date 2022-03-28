@@ -9,24 +9,14 @@ use std::{
 
 use futures::prelude::*;
 
-use input_codec::{event_stream, EventStream};
-
-use termion::{
-	clear, cursor,
-	event::{Event, Key},
-	raw::{IntoRawMode, RawTerminal},
-};
+use crossterm::{QueueableCommand, cursor, event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers}, terminal::{self, Clear, ClearType::*, disable_raw_mode}};
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
-
-mod input_codec;
 
 #[derive(Debug, Error)]
 pub enum ReadlineError {
 	#[error("io: {0}")]
 	IO(#[from] io::Error),
-	#[error("invalid utf8: {0}")]
-	Utf(#[from] std::str::Utf8Error),
 	#[error("end of file")]
 	Eof,
 	#[error("caught CTRL-C")]
@@ -54,7 +44,8 @@ impl LineState {
 		}
 	}
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
-		write!(term, "{}{}", cursor::Left(1000), clear::CurrentLine)
+		term.queue(cursor::MoveLeft(1000))?.queue(Clear(CurrentLine))?;
+		Ok(())
 	}
 	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
 		self.clear(term)?;
@@ -67,7 +58,7 @@ impl LineState {
 			write!(
 				term,
 				"{}",
-				cursor::Left((self.line.len() - self.cursor_pos) as u16)
+				cursor::MoveLeft((self.line.len() - self.cursor_pos) as u16)
 			)?;
 		}
 		Ok(())
@@ -77,16 +68,18 @@ impl LineState {
 		// term.write(data)?;
 		// If last written data was not newline, restore the cursor
 		if !self.last_was_newline {
-			write!(term, "{}", cursor::Restore)?; // Move cursor to previous line
-			// self.clear_and_render(term)?; // Last write ended on newline, clear prompt, write, and write prompt again on new line
+			write!(term, "{}", cursor::RestorePosition)?; // Move cursor to previous line
+			                                  // self.clear_and_render(term)?; // Last write ended on newline, clear prompt, write, and write prompt again on new line
 		}
 
 		// Write data
 		term.write(data)?;
 		// write!(term, "{:X?}", data)?;
 		self.last_was_newline = data.ends_with(&['\n' as u8]); // Set whether data has newline
-		// If data does not end with newline, save the cursor and write newline for prompt
-		if !self.last_was_newline { writeln!(term, "{}", cursor::Save)? }
+													   // If data does not end with newline, save the cursor and write newline for prompt
+		if !self.last_was_newline {
+			writeln!(term, "{}", cursor::SavePosition)?
+		}
 
 		self.clear_and_render(term)?;
 		Ok(())
@@ -95,69 +88,90 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	fn handle_key(
+	fn handle_event(
 		&mut self,
-		key: Key,
+		event: Event,
 		term: &mut impl Write,
 	) -> Result<Option<String>, ReadlineError> {
 		// println!("key: {:?}", key);
-		match key {
-			// Return
-			Key::Char('\n') => {
-				let line = std::mem::replace(&mut self.line, String::new());
-				self.cursor_pos = 0;
-				self.clear_and_render(term)?;
-				return Ok(Some(line));
-			}
-			// Delete character from line
-			Key::Backspace => {
-				if self.cursor_pos != 0 {
-					self.cursor_pos = self.cursor_pos.saturating_sub(1);
-					if self.cursor_pos == self.line.len() {
-						// If at end of line
-						let _ = self.line.pop();
-					} else {
-						self.line.remove(self.cursor_pos);
+		match event {
+			// Regular Modifiers (None or Shift)
+			Event::Key(KeyEvent {
+				code,
+				modifiers: KeyModifiers::NONE,
+			})
+			| Event::Key(KeyEvent {
+				code,
+				modifiers: KeyModifiers::SHIFT,
+			}) => match code {
+				KeyCode::Enter => {
+					let line = std::mem::replace(&mut self.line, String::new());
+					self.cursor_pos = 0;
+					self.clear_and_render(term)?;
+					return Ok(Some(line));
+				}
+				// Delete character from line
+				KeyCode::Backspace => {
+					if self.cursor_pos != 0 {
+						self.cursor_pos = self.cursor_pos.saturating_sub(1);
+						if self.cursor_pos == self.line.len() {
+							// If at end of line
+							let _ = self.line.pop();
+						} else {
+							self.line.remove(self.cursor_pos);
+						}
+						self.clear_and_render(term)?;
 					}
+				}
+				KeyCode::Left => {
+					if self.cursor_pos > 0 {
+						self.cursor_pos = self.cursor_pos.saturating_sub(1);
+						write!(term, "{}", cursor::MoveLeft(1))?;
+					}
+				}
+				KeyCode::Right => {
+					let new_pos = self.cursor_pos + 1;
+					if new_pos <= self.line.len() {
+						write!(term, "{}", cursor::MoveRight(1))?;
+						self.cursor_pos = new_pos;
+					}
+				}
+				// Add character to line and output
+				KeyCode::Char(c) => {
+					if self.cursor_pos == self.line.len() {
+						self.line.push(c);
+						self.cursor_pos += 1;
+						write!(term, "{}", c)?;
+					} else {
+						self.cursor_pos += 1;
+						self.line.insert(self.cursor_pos, c);
+						self.clear_and_render(term)?;
+					}
+				}
+				_ => {}
+			},
+			// Control Keys
+			Event::Key(KeyEvent {
+				code,
+				modifiers: KeyModifiers::CONTROL,
+			}) => match code {
+				// End of transmission (CTRL-D)
+				KeyCode::Char('d') => Err(ReadlineError::Eof)?,
+				// End of text (CTRL-C)
+				KeyCode::Char('c') => {
+					self.print(&format!("{}{}", self.prompt, self.line), term)?;
+					self.line.clear();
+					self.cursor_pos = 0;
+					self.clear_and_render(term)?;
+					Err(ReadlineError::Interrupted)?
+				}
+				KeyCode::Char('l') => {
+					term.queue(Clear(All))?.queue(cursor::MoveToColumn(0))?;
 					self.clear_and_render(term)?;
 				}
-			}
-			// End of transmission (CTRL-D)
-			Key::Ctrl('d') => Err(ReadlineError::Eof)?,
-			// End of text (CTRL-C)
-			Key::Ctrl('c') => {
-				self.print(&format!("{}{}", self.prompt, self.line), term)?;
-				self.line.clear();
-				self.cursor_pos = 0;
-				self.clear_and_render(term)?;
-				Err(ReadlineError::Interrupted)?
-			}
-			Key::Left => {
-				if self.cursor_pos > 0 {
-					self.cursor_pos = self.cursor_pos.saturating_sub(1);
-					write!(term, "{}", cursor::Left(1))?;
-				}
-			}
-			Key::Right => {
-				let new_pos = self.cursor_pos + 1;
-				if new_pos <= self.line.len() {
-					write!(term, "{}", cursor::Right(1))?;
-					self.cursor_pos = new_pos;
-				}
-			}
-			// Add character to line and output
-			Key::Char(c) => {
-				if self.cursor_pos == self.line.len() {
-					self.line.push(c);
-					self.cursor_pos += 1;
-					write!(term, "{}", c)?;
-				} else {
-					self.cursor_pos += 1;
-					self.line.insert(self.cursor_pos, c);
-					self.clear_and_render(term)?;
-				}
-			}
-			_ => {}
+				_ => {},
+			},
+			_ => {},
 		}
 		Ok(None)
 	}
@@ -204,20 +218,21 @@ impl io::Write for SharedWriter {
 }
 
 /// Structure that contains all the data necessary to read and write lines in a asyncronous manner
-pub struct Readline<R: AsyncRead + Unpin> {
-	raw_term: RawTerminal<Stdout>,
-	event_stream: EventStream<R>, // Stream of events
+pub struct Readline {
+	raw_term: Stdout,
+	event_stream: EventStream, // Stream of events
 	line_receiver: Receiver<Vec<u8>>,
 
 	line: LineState, // Current line
 }
 
-impl<R: AsyncRead + Unpin> Readline<R> {
-	pub fn new(prompt: String, reader: R) -> Result<(Self, SharedWriter), ReadlineError> {
+impl Readline {
+	pub fn new(prompt: String) -> Result<(Self, SharedWriter), ReadlineError> {
 		let (sender, line_receiver) = thingbuf::mpsc::channel(100);
+		terminal::enable_raw_mode()?;
 		let mut readline = Readline {
-			raw_term: stdout().into_raw_mode()?,
-			event_stream: event_stream(reader),
+			raw_term: stdout(),
+			event_stream: EventStream::new(),
 			line_receiver,
 			line: LineState::new(prompt), // Current line state
 		};
@@ -232,14 +247,13 @@ impl<R: AsyncRead + Unpin> Readline<R> {
 		let res: Result<String, ReadlineError> = try {
 			futures::select! {
 				event = self.event_stream.next().fuse() => match event {
-					Some(Ok(Event::Key(key))) => {
-						match self.line.handle_key(key, &mut self.raw_term) {
+					Some(Ok(event)) => {
+						match self.line.handle_event(event, &mut self.raw_term) {
 							Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
 							Err(e) => Err(e)?,
 							Ok(None) => return None,
 						}
 					}
-					Some(Ok(_)) => return None,
 					Some(Err(e)) => Err(e)?,
 					None => return None,
 				},
@@ -254,4 +268,10 @@ impl<R: AsyncRead + Unpin> Readline<R> {
 		};
 		Some(res)
 	}
+}
+
+impl Drop for Readline {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+    }
 }
