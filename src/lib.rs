@@ -40,6 +40,7 @@ pub struct LineState {
 	line: String,
 	cursor_pos: usize,
 	prompt: String,
+	last_was_newline: bool,
 }
 
 pub const CLEAR_AND_MOVE: &str = "\x1b[2K\x1b[0E\x1b[0m";
@@ -48,6 +49,7 @@ impl LineState {
 	pub fn new(prompt: String) -> Self {
 		Self {
 			prompt,
+			last_was_newline: true,
 			..Default::default()
 		}
 	}
@@ -70,17 +72,26 @@ impl LineState {
 		}
 		Ok(())
 	}
-	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
+	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
-		term.write(data)?;
-		if !data.ends_with(&['\n' as u8]) {
-			write!(term, "\n")?;
+		// term.write(data)?;
+		// If last written data was not newline, restore the cursor
+		if !self.last_was_newline {
+			write!(term, "{}", cursor::Restore)?; // Move cursor to previous line
+			// self.clear_and_render(term)?; // Last write ended on newline, clear prompt, write, and write prompt again on new line
 		}
-		self.clear(term)?;
-		self.render(term)?;
+
+		// Write data
+		term.write(data)?;
+		// write!(term, "{:X?}", data)?;
+		self.last_was_newline = data.ends_with(&['\n' as u8]); // Set whether data has newline
+		// If data does not end with newline, save the cursor and write newline for prompt
+		if !self.last_was_newline { writeln!(term, "{}", cursor::Save)? }
+
+		self.clear_and_render(term)?;
 		Ok(())
 	}
-	fn print(&self, string: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
+	fn print(&mut self, string: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}

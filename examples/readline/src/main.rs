@@ -1,7 +1,7 @@
 #![feature(try_blocks)]
 
 use async_std::{
-	io::{self, stdin},
+	io::stdin,
 	stream, task,
 };
 use rustyline_async::{Readline, ReadlineError};
@@ -29,7 +29,7 @@ async fn main() -> Result<(), ReadlineError> {
 			loop {
 				futures::select! {
 					_ = periodic_timer1.next().fuse() => {
-						write!(stdout, "First timer went off!")?;
+						writeln!(stdout, "First timer went off!")?;
 					}
 					_ = periodic_timer2.next().fuse() => {
 						//write!(stdout_2, "Second timer went off!")?;
@@ -37,9 +37,9 @@ async fn main() -> Result<(), ReadlineError> {
 					}
 					command = rl.readline().fuse() => if let Some(command) = command {
 						match command {
-							Ok(line) => write!(stdout, "Received line: {}", line)?,
-							Err(ReadlineError::Eof) =>{ write!(stdout, "Exiting...")?; break },
-							Err(ReadlineError::Interrupted) => write!(stdout, "CTRL-C")?,
+							Ok(line) => writeln!(stdout, "Received line: {}", line)?,
+							Err(ReadlineError::Eof) =>{ writeln!(stdout, "Exiting...")?; break },
+							Err(ReadlineError::Interrupted) => writeln!(stdout, "CTRL-C")?,
 							Err(err) => {
 								write!(stdout, "Received err: {:?}", err)?;
 								break;
