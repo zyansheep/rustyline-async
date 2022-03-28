@@ -1,14 +1,22 @@
-#![feature(const_mut_refs)]
 #![feature(try_blocks)]
+#![feature(io_error_other)]
 
-use std::{io::{self, Stdout, Write, stdout}, pin::Pin, sync::Arc, task::{Context, Poll}};
+use std::{
+	io::{self, stdout, Stdout, Write},
+	pin::Pin,
+	task::{Context, Poll},
+};
 
-use futures::{lock::Mutex, prelude::*};
+use futures::prelude::*;
 
-use input_codec::{EventStream, event_stream};
+use input_codec::{event_stream, EventStream};
 
-use sluice::pipe::{PipeReader, PipeWriter};
-use termion::{clear, cursor, event::{Event, Key}, raw::{IntoRawMode, RawTerminal}};
+use termion::{
+	clear, cursor,
+	event::{Event, Key},
+	raw::{IntoRawMode, RawTerminal},
+};
+use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
 
 mod input_codec;
@@ -23,6 +31,8 @@ pub enum ReadlineError {
 	Eof,
 	#[error("caught CTRL-C")]
 	Interrupted,
+	#[error("line writers closed")]
+	Closed,
 }
 
 #[derive(Default)]
@@ -32,11 +42,14 @@ pub struct LineState {
 	prompt: String,
 }
 
-pub const CLEAR_AND_MOVE	: &str = "\x1b[2K\x1b[0E\x1b[0m";
-pub const DELETE			: &str = "\x7f";
+pub const CLEAR_AND_MOVE: &str = "\x1b[2K\x1b[0E\x1b[0m";
+pub const DELETE: &str = "\x7f";
 impl LineState {
 	pub fn new(prompt: String) -> Self {
-		Self { prompt, ..Default::default() }
+		Self {
+			prompt,
+			..Default::default()
+		}
 	}
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", cursor::Left(1000), clear::CurrentLine)
@@ -49,14 +62,20 @@ impl LineState {
 	fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
 		if self.cursor_pos < self.line.len() {
-			write!(term, "{}", cursor::Left((self.line.len() - self.cursor_pos) as u16))?;
+			write!(
+				term,
+				"{}",
+				cursor::Left((self.line.len() - self.cursor_pos) as u16)
+			)?;
 		}
 		Ok(())
 	}
 	fn print_data(&self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
 		term.write(data)?;
-		if !data.ends_with(&['\n' as u8]) { write!(term, "\n")?; }
+		if !data.ends_with(&['\n' as u8]) {
+			write!(term, "\n")?;
+		}
 		self.clear(term)?;
 		self.render(term)?;
 		Ok(())
@@ -65,7 +84,11 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	fn handle_key(&mut self, key: Key, term: &mut impl Write) -> Result<Option<String>, ReadlineError> {
+	fn handle_key(
+		&mut self,
+		key: Key,
+		term: &mut impl Write,
+	) -> Result<Option<String>, ReadlineError> {
 		// println!("key: {:?}", key);
 		match key {
 			// Return
@@ -73,25 +96,23 @@ impl LineState {
 				let line = std::mem::replace(&mut self.line, String::new());
 				self.cursor_pos = 0;
 				self.clear_and_render(term)?;
-				return Ok(Some(line))
-			},
+				return Ok(Some(line));
+			}
 			// Delete character from line
 			Key::Backspace => {
 				if self.cursor_pos != 0 {
 					self.cursor_pos = self.cursor_pos.saturating_sub(1);
-					if self.cursor_pos == self.line.len() { // If at end of line
+					if self.cursor_pos == self.line.len() {
+						// If at end of line
 						let _ = self.line.pop();
 					} else {
 						self.line.remove(self.cursor_pos);
 					}
 					self.clear_and_render(term)?;
 				}
-				
 			}
 			// End of transmission (CTRL-D)
-			Key::Ctrl('d') => {
-				Err(ReadlineError::Eof)?
-			}
+			Key::Ctrl('d') => Err(ReadlineError::Eof)?,
 			// End of text (CTRL-C)
 			Key::Ctrl('c') => {
 				self.print(&format!("{}{}", self.prompt, self.line), term)?;
@@ -124,8 +145,8 @@ impl LineState {
 					self.line.insert(self.cursor_pos, c);
 					self.clear_and_render(term)?;
 				}
-			},
-			_ => {},
+			}
+			_ => {}
 		}
 		Ok(None)
 	}
@@ -133,29 +154,41 @@ impl LineState {
 
 #[derive(Clone)]
 pub struct SharedWriter {
-	writer: Arc<Mutex<PipeWriter>>,
+	sender: Sender<Vec<u8>>,
 }
 impl AsyncWrite for SharedWriter {
 	fn poll_write(
-			self: Pin<&mut Self>,
-			cx: &mut Context<'_>,
-			buf: &[u8],
-		) -> Poll<io::Result<usize>> {
-		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
-		let pin = Pin::new(&mut *guard);
-		pin.poll_write(cx, buf)
+		self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		buf: &[u8],
+	) -> Poll<io::Result<usize>> {
+		let fut = self.sender.send_ref();
+		futures::pin_mut!(fut);
+		let mut send_buf = futures::ready!(fut.poll_unpin(cx))
+			.map_err(|_| io::Error::other("thingbuf receiver has closed"))?;
+		send_buf.extend_from_slice(buf);
+		Poll::Ready(Ok(buf.len()))
 	}
-
-	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
-		let pin = Pin::new(&mut *guard);
-		pin.poll_flush(cx)
+	fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		Poll::Ready(Ok(()))
 	}
-
-	fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-		let mut guard = futures::ready!(self.writer.lock().poll_unpin(cx));
-		let pin = Pin::new(&mut *guard);
-		pin.poll_close(cx)
+	fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		Poll::Ready(Ok(()))
+	}
+}
+impl io::Write for SharedWriter {
+	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+		match self.sender.try_send_ref() {
+			Ok(mut send_buf) => {
+				send_buf.extend_from_slice(buf);
+				Ok(buf.len())
+			}
+			Err(TrySendError::Full(_)) => Err(io::ErrorKind::WouldBlock.into()),
+			_ => Err(io::Error::other("thingbuf receiver has closed")),
+		}
+	}
+	fn flush(&mut self) -> io::Result<()> {
+		Ok(())
 	}
 }
 
@@ -163,39 +196,28 @@ impl AsyncWrite for SharedWriter {
 pub struct Readline<R: AsyncRead + Unpin> {
 	raw_term: RawTerminal<Stdout>,
 	event_stream: EventStream<R>, // Stream of events
-	stdout_reader: PipeReader,
+	line_receiver: Receiver<Vec<u8>>,
 
 	line: LineState, // Current line
 }
 
 impl<R: AsyncRead + Unpin> Readline<R> {
 	pub fn new(prompt: String, reader: R) -> Result<(Self, SharedWriter), ReadlineError> {
-		let (stdout_reader, writer) = sluice::pipe::pipe();
+		let (sender, line_receiver) = thingbuf::mpsc::channel(100);
 		let mut readline = Readline {
 			raw_term: stdout().into_raw_mode()?,
 			event_stream: event_stream(reader),
-			stdout_reader,
+			line_receiver,
 			line: LineState::new(prompt), // Current line state
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.flush()?;
-		let writer = SharedWriter {
-			writer: Arc::new(Mutex::new(writer))
-		};
-		Ok((readline, writer))
-		
-	}
-	pub fn print(&mut self, string: &str) -> Result<(), ReadlineError> {
-		self.line.print(string, &mut self.raw_term)
-	}
-	pub fn print_data(&mut self, data: &[u8]) -> Result<(), ReadlineError> {
-		self.line.print_data(data, &mut self.raw_term)
+		Ok((readline, SharedWriter { sender }))
 	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
 	}
 	pub async fn readline(&mut self) -> Option<Result<String, ReadlineError>> {
-		let mut out_buffer = [0u8; 2048]; // buffers data coming from external sources on its way to stdout
 		let res: Result<String, ReadlineError> = try {
 			futures::select! {
 				event = self.event_stream.next().fuse() => match event {
@@ -210,17 +232,15 @@ impl<R: AsyncRead + Unpin> Readline<R> {
 					Some(Err(e)) => Err(e)?,
 					None => return None,
 				},
-				result = self.stdout_reader.read(&mut out_buffer).fuse() => match result {
-					Ok(bytes_read) => {
-						self.print_data(&out_buffer[0..bytes_read])?;
+				result = self.line_receiver.recv_ref().fuse() => match result {
+					Some(buf) => {
+						self.line.print_data(&buf, &mut self.raw_term)?;
 						return None
 					},
-					Err(e) => Err(e)?
+					None => Err(ReadlineError::Closed)?,
 				}
 			}
-			
 		};
 		Some(res)
 	}
 }
-
