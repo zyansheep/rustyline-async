@@ -35,7 +35,8 @@ pub struct LineState {
 	line: String,
 	cursor_pos: usize,
 	prompt: String,
-	last_was_newline: bool,
+	last_line_length: usize,
+	last_line_completed: bool,
 }
 
 pub const CLEAR_AND_MOVE: &str = "\x1b[2K\x1b[0E\x1b[0m";
@@ -44,7 +45,7 @@ impl LineState {
 	pub fn new(prompt: String) -> Self {
 		Self {
 			prompt,
-			last_was_newline: true,
+			last_line_completed: true,
 			..Default::default()
 		}
 	}
@@ -68,20 +69,24 @@ impl LineState {
 	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
 		// If last written data was not newline, restore the cursor
-		if !self.last_was_newline {
-			term.queue(cursor::RestorePosition)?; // Move cursor to previous line
+		if !self.last_line_completed {
+			term.queue(cursor::MoveUp(1))?
+				.queue(cursor::MoveLeft(1000))?
+				.queue(cursor::MoveRight(self.last_line_length as u16))?;
+			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
 
 		// Write data
 		term.write_all(data)?;
 		// write!(term, "{:X?}", data)?;
-		self.last_was_newline = data.ends_with(b"\n"); // Set whether data has newline
+		self.last_line_completed = data.ends_with(b"\n"); // Set whether data has newline
 
 		// If data does not end with newline, save the cursor and write newline for prompt
-		if !self.last_was_newline {
-			term.queue(cursor::SavePosition)?;
-			write!(term, "\r\n")?; // Move to beginning of line and make new line
-		}
+		if !self.last_line_completed {
+			// term.queue(cursor::SavePosition)?;
+			self.last_line_length += data.len();
+			write!(term, "\n")?; // Move to beginning of line and make new line
+		} else { self.last_line_length = 0 }
 
 		self.clear_and_render(term)?;
 		Ok(())
@@ -146,7 +151,7 @@ impl LineState {
 						write!(term, "{}", c)?;
 					} else {
 						self.cursor_pos += 1;
-						self.line.insert(self.cursor_pos, c);
+						self.line.insert(self.cursor_pos - 1, c);
 						self.clear_and_render(term)?;
 					}
 				}

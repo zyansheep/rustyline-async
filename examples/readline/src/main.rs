@@ -36,7 +36,7 @@ async fn main() -> Result<(), ReadlineError> {
 						match command {
 							Ok(line) => writeln!(stdout, "Received line: {}", line)?,
 							Err(ReadlineError::Eof) =>{ writeln!(stdout, "Exiting...")?; break },
-							Err(ReadlineError::Interrupted) => writeln!(stdout, "CTRL-C")?,
+							Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
 							Err(err) => {
 								write!(stdout, "Received err: {:?}", err)?;
 								break;
