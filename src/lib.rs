@@ -176,6 +176,33 @@ impl LineState {
 					term.queue(Clear(All))?.queue(cursor::MoveToColumn(0))?;
 					self.clear_and_render(term)?;
 				}
+				KeyCode::Char('u') => {
+					self.line.drain(0..self.cursor_pos);
+					self.cursor_pos = 0;
+					self.clear_and_render(term)?;
+				}
+				KeyCode::Left => {
+					self.cursor_pos = if let Some((new_pos, _)) = self.line[0..self.cursor_pos]
+						.char_indices().rev()
+						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
+						new_pos + 1
+					} else { 0 };
+					self.clear_and_render(term)?;
+				}
+				KeyCode::Right => {
+					self.cursor_pos = if let Some((new_pos, _)) = self.line[self.cursor_pos..self.line.len()]
+						.char_indices()
+						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
+						self.cursor_pos + new_pos
+					} else { self.line.len() };
+					self.clear_and_render(term)?;
+					/* self.clear_and_render(term)?;
+					if self.cursor_pos == self.line.len() { return Ok(None) }
+					self.cursor_pos = if let Some(new_pos) = self.line[self.cursor_pos..].chars().skip_while(|c|*c == ' ').position(|c|c == ' ') {
+						self.cursor_pos + new_pos
+					} else { self.line.len() };
+					self.clear_and_render(term)?; */
+				}
 				_ => {}
 			},
 			_ => {}
