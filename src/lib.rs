@@ -9,7 +9,12 @@ use std::{
 
 use futures::prelude::*;
 
-use crossterm::{QueueableCommand, cursor, event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers}, terminal::{self, Clear, ClearType::*, disable_raw_mode}};
+use crossterm::{
+	cursor,
+	event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
+	terminal::{self, disable_raw_mode, Clear, ClearType::*},
+	QueueableCommand,
+};
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
 
@@ -44,7 +49,8 @@ impl LineState {
 		}
 	}
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
-		term.queue(cursor::MoveLeft(1000))?.queue(Clear(CurrentLine))?;
+		term.queue(cursor::MoveLeft(1000))?
+			.queue(Clear(CurrentLine))?;
 		Ok(())
 	}
 	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
@@ -55,30 +61,26 @@ impl LineState {
 	fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
 		if self.cursor_pos < self.line.len() {
-			write!(
-				term,
-				"{}",
-				cursor::MoveLeft((self.line.len() - self.cursor_pos) as u16)
-			)?;
+			term.queue(cursor::MoveLeft((self.line.len() - self.cursor_pos) as u16))?;
 		}
 		Ok(())
 	}
 	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
-		// term.write(data)?;
 		// If last written data was not newline, restore the cursor
 		if !self.last_was_newline {
-			write!(term, "{}", cursor::RestorePosition)?; // Move cursor to previous line
-			                                  // self.clear_and_render(term)?; // Last write ended on newline, clear prompt, write, and write prompt again on new line
+			term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
 
 		// Write data
-		term.write(data)?;
+		term.write_all(data)?;
 		// write!(term, "{:X?}", data)?;
-		self.last_was_newline = data.ends_with(&['\n' as u8]); // Set whether data has newline
-													   // If data does not end with newline, save the cursor and write newline for prompt
+		self.last_was_newline = data.ends_with(b"\n"); // Set whether data has newline
+
+		// If data does not end with newline, save the cursor and write newline for prompt
 		if !self.last_was_newline {
-			writeln!(term, "{}", cursor::SavePosition)?
+			term.queue(cursor::SavePosition)?;
+			write!(term, "\r\n")?; // Move to beginning of line and make new line
 		}
 
 		self.clear_and_render(term)?;
@@ -105,7 +107,7 @@ impl LineState {
 				modifiers: KeyModifiers::SHIFT,
 			}) => match code {
 				KeyCode::Enter => {
-					let line = std::mem::replace(&mut self.line, String::new());
+					let line = std::mem::take(&mut self.line);
 					self.cursor_pos = 0;
 					self.clear_and_render(term)?;
 					return Ok(Some(line));
@@ -126,13 +128,13 @@ impl LineState {
 				KeyCode::Left => {
 					if self.cursor_pos > 0 {
 						self.cursor_pos = self.cursor_pos.saturating_sub(1);
-						write!(term, "{}", cursor::MoveLeft(1))?;
+						term.queue(cursor::MoveLeft(1))?;
 					}
 				}
 				KeyCode::Right => {
 					let new_pos = self.cursor_pos + 1;
 					if new_pos <= self.line.len() {
-						write!(term, "{}", cursor::MoveRight(1))?;
+						term.queue(cursor::MoveRight(1))?;
 						self.cursor_pos = new_pos;
 					}
 				}
@@ -156,22 +158,22 @@ impl LineState {
 				modifiers: KeyModifiers::CONTROL,
 			}) => match code {
 				// End of transmission (CTRL-D)
-				KeyCode::Char('d') => Err(ReadlineError::Eof)?,
+				KeyCode::Char('d') => return Err(ReadlineError::Eof),
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
 					self.line.clear();
 					self.cursor_pos = 0;
 					self.clear_and_render(term)?;
-					Err(ReadlineError::Interrupted)?
+					return Err(ReadlineError::Interrupted);
 				}
 				KeyCode::Char('l') => {
 					term.queue(Clear(All))?.queue(cursor::MoveToColumn(0))?;
 					self.clear_and_render(term)?;
 				}
-				_ => {},
+				_ => {}
 			},
-			_ => {},
+			_ => {}
 		}
 		Ok(None)
 	}
@@ -217,7 +219,7 @@ impl io::Write for SharedWriter {
 	}
 }
 
-/// Structure that contains all the data necessary to read and write lines in a asyncronous manner
+/// Structure that contains all the data necessary to read and write lines in an asyncronous manner
 pub struct Readline {
 	raw_term: Stdout,
 	event_stream: EventStream, // Stream of events
@@ -271,7 +273,7 @@ impl Readline {
 }
 
 impl Drop for Readline {
-    fn drop(&mut self) {
-        let _ = disable_raw_mode();
-    }
+	fn drop(&mut self) {
+		let _ = disable_raw_mode();
+	}
 }

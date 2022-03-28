@@ -6,13 +6,8 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-bytes = "0.5.4"
-const_format = "0.2.22"
 crossterm = { version = "0.23.1", features = ["event-stream"] }
 futures = "0.3.21"
-futures_codec = "0.4.1"
-libc = "0.2.121"
-sluice = "0.5.5"
 thingbuf = "0.1.1"
 thiserror = "1.0.30"
 
