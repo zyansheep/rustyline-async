@@ -1,6 +1,3 @@
-#![feature(try_blocks)]
-#![feature(io_error_other)]
-
 use std::{
 	io::{self, stdout, Stdout, Write},
 	pin::Pin,
@@ -272,7 +269,7 @@ impl AsyncWrite for SharedWriter {
 		let fut = self.sender.send_ref();
 		futures::pin_mut!(fut);
 		let mut send_buf = futures::ready!(fut.poll_unpin(cx))
-			.map_err(|_| io::Error::other("thingbuf receiver has closed"))?;
+			.map_err(|_| io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed"))?;
 		send_buf.extend_from_slice(buf);
 		Poll::Ready(Ok(buf.len()))
 	}
@@ -291,7 +288,10 @@ impl io::Write for SharedWriter {
 				Ok(buf.len())
 			}
 			Err(TrySendError::Full(_)) => Err(io::ErrorKind::WouldBlock.into()),
-			_ => Err(io::Error::other("thingbuf receiver has closed")),
+			_ => Err(io::Error::new(
+				io::ErrorKind::Other,
+				"thingbuf receiver has closed",
+			)),
 		}
 	}
 	fn flush(&mut self) -> io::Result<()> {
@@ -326,31 +326,29 @@ impl Readline {
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
 	}
-	pub async fn readline(&mut self) -> Option<Result<String, ReadlineError>> {
-		let res: Result<String, ReadlineError> = try {
+	pub async fn readline(&mut self) -> Result<String, ReadlineError> {
+		loop {
 			futures::select! {
 				event = self.event_stream.next().fuse() => match event {
 					Some(Ok(event)) => {
 						match self.line.handle_event(event, &mut self.raw_term) {
-							Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
-							Err(e) => Err(e)?,
-							Ok(None) => { self.raw_term.flush()?; return None },
+							Ok(Some(line)) => return Result::<_, ReadlineError>::Ok(line),
+							Err(e) => return Err(e),
+							Ok(None) => self.raw_term.flush()?,
 						}
 					}
-					Some(Err(e)) => Err(e)?,
-					None => return None,
+					Some(Err(e)) => return Err(e.into()),
+					None => {},
 				},
 				result = self.line_receiver.recv_ref().fuse() => match result {
 					Some(buf) => {
 						self.line.print_data(&buf, &mut self.raw_term)?;
 						self.raw_term.flush()?;
-						return None
 					},
-					None => Err(ReadlineError::Closed)?,
+					None => return Err(ReadlineError::Closed),
 				}
 			}
-		};
-		Some(res)
+		}
 	}
 }
 

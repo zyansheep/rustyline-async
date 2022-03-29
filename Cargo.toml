@@ -1,10 +1,12 @@
 [package]
 name = "rustyline-async"
-version = "0.1.2"
+version = "0.2.0"
 readme = "README.md"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "A minimal readline with multiline and async support."
+documentation = "https://docs.rs/rustyline-async"
+repository = "https://github.com/zyansheep/rustyline-async"
 
 [dependencies]
 crossterm = { version = "0.23.1", features = ["event-stream"] }
