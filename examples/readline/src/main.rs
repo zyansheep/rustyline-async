@@ -50,6 +50,10 @@ async fn main() -> Result<(), ReadlineError> {
 										log::info!("Starting the logger...");
 										running_second = true
 									},
+									"stop logging" => {
+										log::info!("Stopping the logger...");
+										running_second = false
+									},
 									_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
 								}
 							},

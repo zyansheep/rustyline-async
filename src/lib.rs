@@ -52,34 +52,26 @@ impl LineState {
 			..Default::default()
 		}
 	}
-	/// Remove prompt and move cursor to place where output can be written
-	/* fn pop_line(&self, term: &mut impl Write) -> io::Result<()> {
-		// Clear the current line (whether it be multi-line or not)
-		let line_height = (self.prompt.len() + self.line.len()) / self.term_size.0 as usize;
-		term.queue(cursor::MoveUp(line_height as u16))?.queue(Clear(FromCursorDown))?;
-		self.clear(term)?;
-
-		
-		Ok(())
-	} */
-	/* /// Make note of where cursor is and display the line
-	fn push_line(&self, term: &mut impl Write) -> io::Result<()> {
-
-	} */
 	// This function assumes we are at the end of the line
-	fn line_height(&self) -> u16 {
-		let line_len = (self.prompt.len() + self.line.len()) as u16;
-		(line_len - 1) / self.term_size.0 // Gets the number of lines wrapped
+	fn line_height(&self, pos: u16) -> u16 {
+		pos / self.term_size.0 // Gets the number of lines wrapped
 	}
-	fn move_cursor_on_line(&self, term: &mut impl Write, pos: u16) -> io::Result<()> {
-		let line_height_pos = pos / self.term_size.0;
-		let move_up = self.line_height() - line_height_pos;
-		let line_remaining_len = pos % self.term_size.0; // Get the remaining length
-		term.queue(cursor::MoveToColumn(1))?.queue(cursor::MoveUp(move_up))?.queue(cursor::MoveRight(line_remaining_len))?;
+	fn move_to_beginning(&self, term: &mut impl Write, from: u16) -> io::Result<()> {
+		let move_up = self.line_height(from.saturating_sub(1));
+		term.queue(cursor::MoveToColumn(1))?
+			.queue(cursor::MoveUp(move_up))?;
 		Ok(())
 	}
+	fn move_from_beginning(&self, term: &mut impl Write, to: u16) -> io::Result<()> {
+		let line_height = self.line_height(to.saturating_sub(1));
+		let line_remaining_len = to % self.term_size.0; // Get the remaining length
+		term.queue(cursor::MoveDown(line_height))?
+			.queue(cursor::MoveRight(line_remaining_len))?;
+		Ok(())
+	}
+
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
-		self.move_cursor_on_line(term, 0)?;
+		self.move_to_beginning(term, (self.prompt.len() + self.line_cursor_pos) as u16)?;
 		term.queue(Clear(FromCursorDown))?;
 		Ok(())
 	}
@@ -90,12 +82,8 @@ impl LineState {
 	}
 	fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
-		self.move_cursor_on_line(term, self.prompt.len() as u16 + self.line_cursor_pos as u16)?;
-		/* if self.line_cursor_pos < self.line.len() {
-			let move_up = (self.line.len() - self.line_cursor_pos) / self.term_size.0 as usize;
-			let move_left = (self.line.len() - self.line_cursor_pos) % self.term_size.0 as usize;
-			term.queue(cursor::MoveLeft(move_left as u16))?.queue(cursor::MoveUp(move_up as u16))?;
-		} */
+		self.move_to_beginning(term, (self.prompt.len() + self.line.len()) as u16)?;
+		self.move_from_beginning(term, self.prompt.len() as u16 + self.line_cursor_pos as u16)?;
 		Ok(())
 	}
 	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
@@ -115,13 +103,13 @@ impl LineState {
 
 		// If data does not end with newline, save the cursor and write newline for prompt
 		if !self.last_line_completed {
-			// term.queue(cursor::SavePosition)?;
 			self.last_line_length += data.len();
 			write!(term, "\n")?; // Move to beginning of line and make new line
-		} else { self.last_line_length = 0 }
+		} else {
+			self.last_line_length = 0;
+		}
 
 		term.queue(cursor::MoveToColumn(1))?;
-		term.queue(cursor::MoveDown(1000))?;
 
 		self.render(term)?;
 		Ok(())
@@ -150,11 +138,13 @@ impl LineState {
 					self.clear(term)?;
 					let line = std::mem::take(&mut self.line);
 					self.line_cursor_pos = 0;
+					self.render(term)?;
 					return Ok(Some(line));
 				}
 				// Delete character from line
 				KeyCode::Backspace => {
 					if self.line_cursor_pos != 0 {
+						self.clear(term)?;
 						self.line_cursor_pos = self.line_cursor_pos.saturating_sub(1);
 						if self.line_cursor_pos == self.line.len() {
 							// If at end of line
@@ -162,7 +152,7 @@ impl LineState {
 						} else {
 							self.line.remove(self.line_cursor_pos);
 						}
-						self.clear_and_render(term)?;
+						self.render(term)?;
 					}
 				}
 				KeyCode::Left => {
@@ -180,15 +170,14 @@ impl LineState {
 				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
+					self.clear(term)?;
+					self.line_cursor_pos += 1;
 					if self.line_cursor_pos == self.line.len() {
 						self.line.push(c);
-						self.line_cursor_pos += 1;
-						write!(term, "{}", c)?;
 					} else {
-						self.line_cursor_pos += 1;
 						self.line.insert(self.line_cursor_pos - 1, c);
-						self.clear_and_render(term)?;
 					}
+					self.render(term)?;
 				}
 				_ => {}
 			},
@@ -201,8 +190,8 @@ impl LineState {
 				KeyCode::Char('d') => {
 					writeln!(term)?;
 					self.clear(term)?;
-					return Err(ReadlineError::Eof)
-				},
+					return Err(ReadlineError::Eof);
+				}
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
@@ -219,24 +208,39 @@ impl LineState {
 					self.clear(term)?;
 					self.line.drain(0..self.line_cursor_pos);
 					self.line_cursor_pos = 0;
+					term.queue(cursor::MoveDown(self.line_height(
+						((self.prompt.len() + self.line.len()) - self.line_cursor_pos) as u16,
+					)))?;
 					self.render(term)?;
 				}
 				KeyCode::Left => {
 					self.clear(term)?;
-					self.line_cursor_pos = if let Some((new_pos, _)) = self.line[0..self.line_cursor_pos]
-						.char_indices().rev()
-						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
+					self.line_cursor_pos = if let Some((new_pos, _)) = self.line
+						[0..self.line_cursor_pos]
+						.char_indices()
+						.rev()
+						.skip_while(|(_, c)| *c == ' ')
+						.find(|(_, c)| *c == ' ')
+					{
 						new_pos + 1
-					} else { 0 };
+					} else {
+						0
+					};
+
 					self.render(term)?;
 				}
 				KeyCode::Right => {
 					self.clear(term)?;
-					self.line_cursor_pos = if let Some((new_pos, _)) = self.line[self.line_cursor_pos..self.line.len()]
+					self.line_cursor_pos = if let Some((new_pos, _)) = self.line
+						[self.line_cursor_pos..self.line.len()]
 						.char_indices()
-						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
+						.skip_while(|(_, c)| *c == ' ')
+						.find(|(_, c)| *c == ' ')
+					{
 						self.line_cursor_pos + new_pos
-					} else { self.line.len() };
+					} else {
+						self.line.len()
+					};
 					self.render(term)?;
 				}
 				_ => {}
@@ -244,7 +248,7 @@ impl LineState {
 			Event::Resize(x, y) => {
 				self.term_size = (x, y);
 				self.clear_and_render(term)?;
-			},
+			}
 			_ => {}
 		}
 		Ok(None)
