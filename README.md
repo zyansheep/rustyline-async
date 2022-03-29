@@ -6,13 +6,13 @@
 
 A minimal readline with multiline and async support.
 
-Inspired by `rustyline-async` , `async-readline` & `termion-async-input`. Build using `crossterm`
+Inspired by `rustyline-async` , `async-readline` & `termion-async-input`. Built using `crossterm`
 
 ## Features
 
  * Unicode
  * Multiline Editing
- * Ctrl-C, Ctrl-D
+ * Ctrl-C, Ctrl-D are returned as `Err(Interrupt)` and `Err(Eof)` respectively.
  * Ctrl-U to clear line before cursor
  * Ctrl-left & right to move between words
  * Ctrl-L clear screen
