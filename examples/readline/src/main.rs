@@ -31,7 +31,6 @@ async fn main() -> Result<(), ReadlineError> {
 						if running_first { writeln!(stdout, "First timer went off!")?; }
 					}
 					_ = periodic_timer2.next().fuse() => {
-						//write!(stdout_2, "Second timer went off!")?;
 						if running_second { log::info!("Second timer went off!"); }
 					}
 					command = rl.readline().fuse() => if let Some(command) = command {
@@ -54,6 +53,13 @@ async fn main() -> Result<(), ReadlineError> {
 										log::info!("Stopping the logger...");
 										running_second = false
 									},
+									"info" => {
+										writeln!(stdout, r"
+hello there
+I use NixOS btw
+its pretty cool
+										")?;
+									}
 									_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
 								}
 							},

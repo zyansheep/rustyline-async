@@ -97,9 +97,12 @@ impl LineState {
 			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
 		// Write data
-		term.write_all(data)?;
+		for line in data.split_inclusive(|b|*b == b'\n') {
+			term.write_all(line)?;
+			term.write_all(b"\x1b[1000D")?;
+		}
 		// write!(term, "{:X?}", data)?;
-		self.last_line_completed = data.ends_with(b"\n"); // Set whether data has newline
+		self.last_line_completed = data.ends_with(b"\n"); // Set whether data ends with newline
 
 		// If data does not end with newline, save the cursor and write newline for prompt
 		if !self.last_line_completed {
