@@ -33,25 +33,54 @@ pub enum ReadlineError {
 #[derive(Default)]
 pub struct LineState {
 	line: String,
-	cursor_pos: usize,
+	line_cursor_pos: usize,
 	prompt: String,
 	last_line_length: usize,
 	last_line_completed: bool,
+
+	term_size: (u16, u16),
 }
 
 pub const CLEAR_AND_MOVE: &str = "\x1b[2K\x1b[0E\x1b[0m";
 pub const DELETE: &str = "\x7f";
 impl LineState {
-	pub fn new(prompt: String) -> Self {
+	pub fn new(prompt: String, term_size: (u16, u16)) -> Self {
 		Self {
 			prompt,
 			last_line_completed: true,
+			term_size,
 			..Default::default()
 		}
 	}
+	/// Remove prompt and move cursor to place where output can be written
+	/* fn pop_line(&self, term: &mut impl Write) -> io::Result<()> {
+		// Clear the current line (whether it be multi-line or not)
+		let line_height = (self.prompt.len() + self.line.len()) / self.term_size.0 as usize;
+		term.queue(cursor::MoveUp(line_height as u16))?.queue(Clear(FromCursorDown))?;
+		self.clear(term)?;
+
+		
+		Ok(())
+	} */
+	/* /// Make note of where cursor is and display the line
+	fn push_line(&self, term: &mut impl Write) -> io::Result<()> {
+
+	} */
+	// This function assumes we are at the end of the line
+	fn line_height(&self) -> u16 {
+		let line_len = (self.prompt.len() + self.line.len()) as u16;
+		(line_len - 1) / self.term_size.0 // Gets the number of lines wrapped
+	}
+	fn move_cursor_on_line(&self, term: &mut impl Write, pos: u16) -> io::Result<()> {
+		let line_height_pos = pos / self.term_size.0;
+		let move_up = self.line_height() - line_height_pos;
+		let line_remaining_len = pos % self.term_size.0; // Get the remaining length
+		term.queue(cursor::MoveToColumn(1))?.queue(cursor::MoveUp(move_up))?.queue(cursor::MoveRight(line_remaining_len))?;
+		Ok(())
+	}
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
-		term.queue(cursor::MoveLeft(1000))?
-			.queue(Clear(CurrentLine))?;
+		self.move_cursor_on_line(term, 0)?;
+		term.queue(Clear(FromCursorDown))?;
 		Ok(())
 	}
 	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
@@ -61,21 +90,24 @@ impl LineState {
 	}
 	fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
-		if self.cursor_pos < self.line.len() {
-			term.queue(cursor::MoveLeft((self.line.len() - self.cursor_pos) as u16))?;
-		}
+		self.move_cursor_on_line(term, self.prompt.len() as u16 + self.line_cursor_pos as u16)?;
+		/* if self.line_cursor_pos < self.line.len() {
+			let move_up = (self.line.len() - self.line_cursor_pos) / self.term_size.0 as usize;
+			let move_left = (self.line.len() - self.line_cursor_pos) % self.term_size.0 as usize;
+			term.queue(cursor::MoveLeft(move_left as u16))?.queue(cursor::MoveUp(move_up as u16))?;
+		} */
 		Ok(())
 	}
 	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
+
 		// If last written data was not newline, restore the cursor
 		if !self.last_line_completed {
 			term.queue(cursor::MoveUp(1))?
-				.queue(cursor::MoveLeft(1000))?
+				.queue(cursor::MoveToColumn(1))?
 				.queue(cursor::MoveRight(self.last_line_length as u16))?;
 			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
-
 		// Write data
 		term.write_all(data)?;
 		// write!(term, "{:X?}", data)?;
@@ -88,7 +120,10 @@ impl LineState {
 			write!(term, "\n")?; // Move to beginning of line and make new line
 		} else { self.last_line_length = 0 }
 
-		self.clear_and_render(term)?;
+		term.queue(cursor::MoveToColumn(1))?;
+		term.queue(cursor::MoveDown(1000))?;
+
+		self.render(term)?;
 		Ok(())
 	}
 	fn print(&mut self, string: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
@@ -112,46 +147,46 @@ impl LineState {
 				modifiers: KeyModifiers::SHIFT,
 			}) => match code {
 				KeyCode::Enter => {
+					self.clear(term)?;
 					let line = std::mem::take(&mut self.line);
-					self.cursor_pos = 0;
-					self.clear_and_render(term)?;
+					self.line_cursor_pos = 0;
 					return Ok(Some(line));
 				}
 				// Delete character from line
 				KeyCode::Backspace => {
-					if self.cursor_pos != 0 {
-						self.cursor_pos = self.cursor_pos.saturating_sub(1);
-						if self.cursor_pos == self.line.len() {
+					if self.line_cursor_pos != 0 {
+						self.line_cursor_pos = self.line_cursor_pos.saturating_sub(1);
+						if self.line_cursor_pos == self.line.len() {
 							// If at end of line
 							let _ = self.line.pop();
 						} else {
-							self.line.remove(self.cursor_pos);
+							self.line.remove(self.line_cursor_pos);
 						}
 						self.clear_and_render(term)?;
 					}
 				}
 				KeyCode::Left => {
-					if self.cursor_pos > 0 {
-						self.cursor_pos = self.cursor_pos.saturating_sub(1);
+					if self.line_cursor_pos > 0 {
+						self.line_cursor_pos = self.line_cursor_pos.saturating_sub(1);
 						term.queue(cursor::MoveLeft(1))?;
 					}
 				}
 				KeyCode::Right => {
-					let new_pos = self.cursor_pos + 1;
+					let new_pos = self.line_cursor_pos + 1;
 					if new_pos <= self.line.len() {
 						term.queue(cursor::MoveRight(1))?;
-						self.cursor_pos = new_pos;
+						self.line_cursor_pos = new_pos;
 					}
 				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
-					if self.cursor_pos == self.line.len() {
+					if self.line_cursor_pos == self.line.len() {
 						self.line.push(c);
-						self.cursor_pos += 1;
+						self.line_cursor_pos += 1;
 						write!(term, "{}", c)?;
 					} else {
-						self.cursor_pos += 1;
-						self.line.insert(self.cursor_pos - 1, c);
+						self.line_cursor_pos += 1;
+						self.line.insert(self.line_cursor_pos - 1, c);
 						self.clear_and_render(term)?;
 					}
 				}
@@ -172,7 +207,7 @@ impl LineState {
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
 					self.line.clear();
-					self.cursor_pos = 0;
+					self.line_cursor_pos = 0;
 					self.clear_and_render(term)?;
 					return Err(ReadlineError::Interrupted);
 				}
@@ -181,27 +216,34 @@ impl LineState {
 					self.clear_and_render(term)?;
 				}
 				KeyCode::Char('u') => {
-					self.line.drain(0..self.cursor_pos);
-					self.cursor_pos = 0;
-					self.clear_and_render(term)?;
+					self.clear(term)?;
+					self.line.drain(0..self.line_cursor_pos);
+					self.line_cursor_pos = 0;
+					self.render(term)?;
 				}
 				KeyCode::Left => {
-					self.cursor_pos = if let Some((new_pos, _)) = self.line[0..self.cursor_pos]
+					self.clear(term)?;
+					self.line_cursor_pos = if let Some((new_pos, _)) = self.line[0..self.line_cursor_pos]
 						.char_indices().rev()
 						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
 						new_pos + 1
 					} else { 0 };
-					self.clear_and_render(term)?;
+					self.render(term)?;
 				}
 				KeyCode::Right => {
-					self.cursor_pos = if let Some((new_pos, _)) = self.line[self.cursor_pos..self.line.len()]
+					self.clear(term)?;
+					self.line_cursor_pos = if let Some((new_pos, _)) = self.line[self.line_cursor_pos..self.line.len()]
 						.char_indices()
 						.skip_while(|(_, c)|*c == ' ').find(|(_, c)|*c == ' ') {
-						self.cursor_pos + new_pos
+						self.line_cursor_pos + new_pos
 					} else { self.line.len() };
-					self.clear_and_render(term)?;
+					self.render(term)?;
 				}
 				_ => {}
+			},
+			Event::Resize(x, y) => {
+				self.term_size = (x, y);
+				self.clear_and_render(term)?;
 			},
 			_ => {}
 		}
@@ -266,9 +308,10 @@ impl Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
-			line: LineState::new(prompt), // Current line state
+			line: LineState::new(prompt, terminal::size()?), // Current line state
 		};
 		readline.line.render(&mut readline.raw_term)?;
+		readline.raw_term.queue(terminal::EnableLineWrap)?;
 		readline.raw_term.flush()?;
 		Ok((readline, SharedWriter { sender }))
 	}

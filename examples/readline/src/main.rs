@@ -21,7 +21,7 @@ async fn main() -> Result<(), ReadlineError> {
 	)
 	.unwrap();
 
-	let mut running_first = false;
+	let mut running_first = true;
 	let mut running_second = false;
 	let join = task::spawn(async move {
 		let ret: Result<(), ReadlineError> = try {
