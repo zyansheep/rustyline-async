@@ -66,7 +66,6 @@ async fn main() -> Result<(), ReadlineError> {
 						}
 					}
 				}
-				rl.flush()?;
 			}
 		};
 		ret

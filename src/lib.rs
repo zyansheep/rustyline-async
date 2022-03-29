@@ -18,6 +18,7 @@ use crossterm::{
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
 
+/// Error returned from `readline()`
 #[derive(Debug, Error)]
 pub enum ReadlineError {
 	#[error("io: {0}")]
@@ -31,7 +32,7 @@ pub enum ReadlineError {
 }
 
 #[derive(Default)]
-pub struct LineState {
+struct LineState {
 	line: String,
 	line_cursor_pos: usize,
 	prompt: String,
@@ -41,10 +42,8 @@ pub struct LineState {
 	term_size: (u16, u16),
 }
 
-pub const CLEAR_AND_MOVE: &str = "\x1b[2K\x1b[0E\x1b[0m";
-pub const DELETE: &str = "\x7f";
 impl LineState {
-	pub fn new(prompt: String, term_size: (u16, u16)) -> Self {
+	fn new(prompt: String, term_size: (u16, u16)) -> Self {
 		Self {
 			prompt,
 			last_line_completed: true,
@@ -52,16 +51,17 @@ impl LineState {
 			..Default::default()
 		}
 	}
-	// This function assumes we are at the end of the line
 	fn line_height(&self, pos: u16) -> u16 {
 		pos / self.term_size.0 // Gets the number of lines wrapped
 	}
+	/// Move from a position on the line to the start
 	fn move_to_beginning(&self, term: &mut impl Write, from: u16) -> io::Result<()> {
 		let move_up = self.line_height(from.saturating_sub(1));
 		term.queue(cursor::MoveToColumn(1))?
 			.queue(cursor::MoveUp(move_up))?;
 		Ok(())
 	}
+	/// Move from the start of the line to some position
 	fn move_from_beginning(&self, term: &mut impl Write, to: u16) -> io::Result<()> {
 		let line_height = self.line_height(to.saturating_sub(1));
 		let line_remaining_len = to % self.term_size.0; // Get the remaining length
@@ -104,7 +104,7 @@ impl LineState {
 		// If data does not end with newline, save the cursor and write newline for prompt
 		if !self.last_line_completed {
 			self.last_line_length += data.len();
-			write!(term, "\n")?; // Move to beginning of line and make new line
+			writeln!(term)?; // Move to beginning of line and make new line
 		} else {
 			self.last_line_length = 0;
 		}
@@ -255,6 +255,7 @@ impl LineState {
 	}
 }
 
+/// Clonable object that implements `Write` and `AsyncWrite` and allows for sending data to the output without messing up the readline.
 #[derive(Clone)]
 pub struct SharedWriter {
 	sender: Sender<Vec<u8>>,
@@ -312,7 +313,7 @@ impl Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
-			line: LineState::new(prompt, terminal::size()?), // Current line state
+			line: LineState::new(prompt, terminal::size()?),
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
@@ -330,7 +331,7 @@ impl Readline {
 						match self.line.handle_event(event, &mut self.raw_term) {
 							Ok(Some(line)) => Result::<_, ReadlineError>::Ok(line)?,
 							Err(e) => Err(e)?,
-							Ok(None) => return None,
+							Ok(None) => { self.raw_term.flush()?; return None },
 						}
 					}
 					Some(Err(e)) => Err(e)?,
@@ -339,6 +340,7 @@ impl Readline {
 				result = self.line_receiver.recv_ref().fuse() => match result {
 					Some(buf) => {
 						self.line.print_data(&buf, &mut self.raw_term)?;
+						self.raw_term.flush()?;
 						return None
 					},
 					None => Err(ReadlineError::Closed)?,
