@@ -96,10 +96,10 @@ impl LineState {
 				.queue(cursor::MoveRight(self.last_line_length as u16))?;
 			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
-		// Write data
+		// Write data in a way that newlines also act as carriage returns
 		for line in data.split_inclusive(|b| *b == b'\n') {
 			term.write_all(line)?;
-			term.write_all(b"\x1b[1000D")?;
+			term.queue(cursor::MoveToColumn(1))?;
 		}
 		// write!(term, "{:X?}", data)?;
 		self.last_line_completed = data.ends_with(b"\n"); // Set whether data ends with newline
@@ -310,7 +310,7 @@ pub struct Readline {
 
 impl Readline {
 	pub fn new(prompt: String) -> Result<(Self, SharedWriter), ReadlineError> {
-		let (sender, line_receiver) = thingbuf::mpsc::channel(100);
+		let (sender, line_receiver) = thingbuf::mpsc::channel(500);
 		terminal::enable_raw_mode()?;
 		let mut readline = Readline {
 			raw_term: stdout(),
