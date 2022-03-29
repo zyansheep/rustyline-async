@@ -97,7 +97,7 @@ impl LineState {
 			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
 		// Write data
-		for line in data.split_inclusive(|b|*b == b'\n') {
+		for line in data.split_inclusive(|b| *b == b'\n') {
 			term.write_all(line)?;
 			term.write_all(b"\x1b[1000D")?;
 		}
