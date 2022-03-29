@@ -21,20 +21,38 @@ async fn main() -> Result<(), ReadlineError> {
 	)
 	.unwrap();
 
+	let mut running_first = false;
+	let mut running_second = false;
 	let join = task::spawn(async move {
 		let ret: Result<(), ReadlineError> = try {
 			loop {
 				futures::select! {
 					_ = periodic_timer1.next().fuse() => {
-						writeln!(stdout, "First timer went off!")?;
+						if running_first { writeln!(stdout, "First timer went off!")?; }
 					}
 					_ = periodic_timer2.next().fuse() => {
 						//write!(stdout_2, "Second timer went off!")?;
-						log::info!("Second timer went off!");
+						if running_second { log::info!("Second timer went off!"); }
 					}
 					command = rl.readline().fuse() => if let Some(command) = command {
 						match command {
-							Ok(line) => writeln!(stdout, "Received line: {}", line)?,
+							Ok(line) => {
+								match line.trim() {
+									"start task" => {
+										writeln!(stdout, "Starting the task...")?;
+										running_first = true;
+									},
+									"stop task" => {
+										writeln!(stdout, "Stopping the task...")?;
+										running_first = false;
+									}
+									"start logging" => {
+										log::info!("Starting the logger...");
+										running_second = true
+									},
+									_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
+								}
+							},
 							Err(ReadlineError::Eof) =>{ writeln!(stdout, "Exiting...")?; break },
 							Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
 							Err(err) => {

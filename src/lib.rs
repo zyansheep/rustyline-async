@@ -163,7 +163,11 @@ impl LineState {
 				modifiers: KeyModifiers::CONTROL,
 			}) => match code {
 				// End of transmission (CTRL-D)
-				KeyCode::Char('d') => return Err(ReadlineError::Eof),
+				KeyCode::Char('d') => {
+					writeln!(term)?;
+					self.clear(term)?;
+					return Err(ReadlineError::Eof)
+				},
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
@@ -196,12 +200,6 @@ impl LineState {
 						self.cursor_pos + new_pos
 					} else { self.line.len() };
 					self.clear_and_render(term)?;
-					/* self.clear_and_render(term)?;
-					if self.cursor_pos == self.line.len() { return Ok(None) }
-					self.cursor_pos = if let Some(new_pos) = self.line[self.cursor_pos..].chars().skip_while(|c|*c == ' ').position(|c|c == ' ') {
-						self.cursor_pos + new_pos
-					} else { self.line.len() };
-					self.clear_and_render(term)?; */
 				}
 				_ => {}
 			},
