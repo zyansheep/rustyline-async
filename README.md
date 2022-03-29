@@ -24,4 +24,4 @@ Feel free to PR to add more features!
 cargo run --package readline
 ```
 
-![rustyline-async](https://i.imgur.com/09d0Wev.mp4)
+![rustyline-async](https://i.imgur.com/Ei2bzgu.gif)
