@@ -6,7 +6,7 @@
 
 A minimal readline with multiline and async support.
 
-Inspired by `rustyline-async` , `async-readline` & `termion-async-input`. Built using `crossterm`
+Inspired by `rustyline` , `async-readline` & `termion-async-input`. Built using `crossterm`
 
 ## Features
 
