@@ -21,20 +21,28 @@ async fn main() -> Result<(), ReadlineError> {
 		number: 60,
 	};
 
-	simplelog::WriteLogger::init(log::LevelFilter::Debug, simplelog::Config::default(), stdout.clone()).unwrap();
+	simplelog::WriteLogger::init(
+		log::LevelFilter::Debug,
+		simplelog::Config::default(),
+		stdout.clone(),
+	)
+	.unwrap();
 
 	loop {
 		match rl.readline().await {
 			Ok(_) => {
 				writeln!(stdout, "{:?}", thingy)?;
 				log::info!("{:?}", thingy);
-			},
-			Err(ReadlineError::Eof) =>{ writeln!(stdout, "Exiting...")?; break },
+			}
+			Err(ReadlineError::Eof) => {
+				writeln!(stdout, "Exiting...")?;
+				break;
+			}
 			Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
 			Err(err) => {
 				writeln!(stdout, "Received err: {:?}", err)?;
 				break;
-			},
+			}
 		}
 	}
 	Ok(())

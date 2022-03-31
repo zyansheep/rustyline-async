@@ -1,4 +1,9 @@
-use std::{io::{self, stdout, Stdout, Write}, ops::DerefMut, pin::Pin, task::{Context, Poll}};
+use std::{
+	io::{self, stdout, Stdout, Write},
+	ops::DerefMut,
+	pin::Pin,
+	task::{Context, Poll},
+};
 
 use futures::prelude::*;
 
@@ -62,21 +67,29 @@ impl LineState {
 			.queue(cursor::MoveRight(line_remaining_len))?;
 		Ok(())
 	}
-
+	fn reset_cursor(&self, term: &mut impl Write) -> io::Result<()> {
+		self.move_to_beginning(term, (self.prompt.len() + self.line_cursor_pos) as u16)
+	}
+	fn set_cursor(&self, term: &mut impl Write) -> io::Result<()> {
+		self.move_from_beginning(term, (self.prompt.len() + self.line_cursor_pos) as u16)
+	}
+	/// Clear current line
 	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
 		self.move_to_beginning(term, (self.prompt.len() + self.line_cursor_pos) as u16)?;
 		term.queue(Clear(FromCursorDown))?;
 		Ok(())
 	}
-	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
-		self.clear(term)?;
-		self.render(term)?;
-		Ok(())
-	}
+	/// Render line
 	fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
 		self.move_to_beginning(term, (self.prompt.len() + self.line.len()) as u16)?;
 		self.move_from_beginning(term, self.prompt.len() as u16 + self.line_cursor_pos as u16)?;
+		Ok(())
+	}
+	/// Clear line and render
+	fn clear_and_render(&self, term: &mut impl Write) -> io::Result<()> {
+		self.clear(term)?;
+		self.render(term)?;
 		Ok(())
 	}
 	fn print_data(&mut self, data: &[u8], term: &mut impl Write) -> Result<(), ReadlineError> {
@@ -94,16 +107,16 @@ impl LineState {
 			term.write_all(line)?;
 			term.queue(cursor::MoveToColumn(1))?;
 		}
-		term.queue(terminal::EnableLineWrap)?;
 
 		self.last_line_completed = data.ends_with(b"\n"); // Set whether data ends with newline
 
 		// If data does not end with newline, save the cursor and write newline for prompt
+		// Usually data does end in newline due to the buffering of SharedWriter, but sometimes it may not (i.e. if .flush() is called)
 		if !self.last_line_completed {
 			self.last_line_length += data.len();
 			// Make sure that last_line_length wraps around when doing multiple writes
 			if self.last_line_length >= self.term_size.0 as usize {
-				self.last_line_length = self.last_line_length % self.term_size.0 as usize;
+				self.last_line_length %= self.term_size.0 as usize;
 				writeln!(term)?;
 			}
 			writeln!(term)?; // Move to beginning of line and make new line
@@ -215,7 +228,7 @@ impl LineState {
 					self.render(term)?;
 				}
 				KeyCode::Left => {
-					self.clear(term)?;
+					self.reset_cursor(term)?;
 					self.line_cursor_pos = if let Some((new_pos, _)) = self.line
 						[0..self.line_cursor_pos]
 						.char_indices()
@@ -227,11 +240,10 @@ impl LineState {
 					} else {
 						0
 					};
-
-					self.render(term)?;
+					self.set_cursor(term)?;
 				}
 				KeyCode::Right => {
-					self.clear(term)?;
+					self.reset_cursor(term)?;
 					self.line_cursor_pos = if let Some((new_pos, _)) = self.line
 						[self.line_cursor_pos..self.line.len()]
 						.char_indices()
@@ -242,7 +254,7 @@ impl LineState {
 					} else {
 						self.line.len()
 					};
-					self.render(term)?;
+					self.set_cursor(term)?;
 				}
 				_ => {}
 			},
@@ -264,9 +276,12 @@ pub struct SharedWriter {
 	sender: Sender<Vec<u8>>,
 }
 impl Clone for SharedWriter {
-    fn clone(&self) -> Self {
-        Self { buffer: Vec::new(), sender: self.sender.clone() }
-    }
+	fn clone(&self) -> Self {
+		Self {
+			buffer: Vec::new(),
+			sender: self.sender.clone(),
+		}
+	}
 }
 impl AsyncWrite for SharedWriter {
 	fn poll_write(
@@ -279,8 +294,9 @@ impl AsyncWrite for SharedWriter {
 		if this.buffer.ends_with(b"\n") {
 			let fut = this.sender.send_ref();
 			futures::pin_mut!(fut);
-			let mut send_buf = futures::ready!(fut.poll_unpin(cx))
-				.map_err(|_| io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed"))?;
+			let mut send_buf = futures::ready!(fut.poll_unpin(cx)).map_err(|_| {
+				io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed")
+			})?;
 			// Swap buffers
 			std::mem::swap(send_buf.deref_mut(), &mut this.buffer);
 			this.buffer.clear();
@@ -288,7 +304,6 @@ impl AsyncWrite for SharedWriter {
 		} else {
 			Poll::Ready(Ok(buf.len()))
 		}
-		
 	}
 	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
 		let mut this = self.project();
@@ -315,14 +330,15 @@ impl io::Write for SharedWriter {
 					self.buffer.clear();
 				}
 				Err(TrySendError::Full(_)) => return Err(io::ErrorKind::WouldBlock.into()),
-				_ => return Err(io::Error::new(
-					io::ErrorKind::Other,
-					"thingbuf receiver has closed",
-				)),
+				_ => {
+					return Err(io::Error::new(
+						io::ErrorKind::Other,
+						"thingbuf receiver has closed",
+					))
+				}
 			}
 		}
 		Ok(buf.len())
-		
 	}
 	fn flush(&mut self) -> io::Result<()> {
 		Ok(())
@@ -351,7 +367,13 @@ impl Readline {
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
 		readline.raw_term.flush()?;
-		Ok((readline, SharedWriter { sender, buffer: Vec::new() }))
+		Ok((
+			readline,
+			SharedWriter {
+				sender,
+				buffer: Vec::new(),
+			},
+		))
 	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
