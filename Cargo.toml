@@ -15,11 +15,14 @@ thingbuf = "0.1.1"
 thiserror = "1.0.30"
 
 [workspace]
-members = [ "examples/readline" ]
+members = [
+	"examples/readline",
+	"examples/test-printing"
+]
 
 [features]
 
 [package.metadata.nix]
 build = true
-toolchain = "nightly"
+toolchain = "stable"
 nativeBuildInputs = [ "cargo-edit" ]

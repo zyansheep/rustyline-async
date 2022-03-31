@@ -91,19 +91,25 @@ impl LineState {
 			term.queue(cursor::MoveUp(1))?
 				.queue(cursor::MoveToColumn(1))?
 				.queue(cursor::MoveRight(self.last_line_length as u16))?;
-			// term.queue(cursor::RestorePosition)?; // Move cursor to previous line
 		}
+
 		// Write data in a way that newlines also act as carriage returns
 		for line in data.split_inclusive(|b| *b == b'\n') {
 			term.write_all(line)?;
 			term.queue(cursor::MoveToColumn(1))?;
 		}
-		// write!(term, "{:X?}", data)?;
+		term.queue(terminal::EnableLineWrap)?;
+
 		self.last_line_completed = data.ends_with(b"\n"); // Set whether data ends with newline
 
 		// If data does not end with newline, save the cursor and write newline for prompt
 		if !self.last_line_completed {
 			self.last_line_length += data.len();
+			// Make sure that last_line_length wraps around when doing multiple writes
+			if self.last_line_length >= self.term_size.0 as usize {
+				self.last_line_length = self.last_line_length % self.term_size.0 as usize;
+				writeln!(term)?;
+			}
 			writeln!(term)?; // Move to beginning of line and make new line
 		} else {
 			self.last_line_length = 0;
@@ -123,7 +129,6 @@ impl LineState {
 		event: Event,
 		term: &mut impl Write,
 	) -> Result<Option<String>, ReadlineError> {
-		// println!("key: {:?}", key);
 		match event {
 			// Regular Modifiers (None or Shift)
 			Event::Key(KeyEvent {

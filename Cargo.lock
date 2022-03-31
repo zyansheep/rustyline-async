@@ -749,6 +749,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-printing"
+version = "0.1.0"
+dependencies = [
+ "async-std",
+ "log",
+ "rustyline-async",
+ "simplelog",
+]
+
+[[package]]
 name = "thingbuf"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
