@@ -1,8 +1,4 @@
-use std::{
-	io::{self, stdout, Stdout, Write},
-	pin::Pin,
-	task::{Context, Poll},
-};
+use std::{io::{self, stdout, Stdout, Write}, ops::DerefMut, pin::Pin, task::{Context, Poll}};
 
 use futures::prelude::*;
 
@@ -261,9 +257,16 @@ impl LineState {
 }
 
 /// Clonable object that implements `Write` and `AsyncWrite` and allows for sending data to the output without messing up the readline.
-#[derive(Clone)]
+#[pin_project::pin_project]
 pub struct SharedWriter {
+	#[pin]
+	buffer: Vec<u8>,
 	sender: Sender<Vec<u8>>,
+}
+impl Clone for SharedWriter {
+    fn clone(&self) -> Self {
+        Self { buffer: Vec::new(), sender: self.sender.clone() }
+    }
 }
 impl AsyncWrite for SharedWriter {
 	fn poll_write(
@@ -271,14 +274,31 @@ impl AsyncWrite for SharedWriter {
 		cx: &mut Context<'_>,
 		buf: &[u8],
 	) -> Poll<io::Result<usize>> {
-		let fut = self.sender.send_ref();
+		let mut this = self.project();
+		this.buffer.extend_from_slice(buf);
+		if this.buffer.ends_with(b"\n") {
+			let fut = this.sender.send_ref();
+			futures::pin_mut!(fut);
+			let mut send_buf = futures::ready!(fut.poll_unpin(cx))
+				.map_err(|_| io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed"))?;
+			// Swap buffers
+			std::mem::swap(send_buf.deref_mut(), &mut this.buffer);
+			this.buffer.clear();
+			Poll::Ready(Ok(buf.len()))
+		} else {
+			Poll::Ready(Ok(buf.len()))
+		}
+		
+	}
+	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		let mut this = self.project();
+		let fut = this.sender.send_ref();
 		futures::pin_mut!(fut);
 		let mut send_buf = futures::ready!(fut.poll_unpin(cx))
 			.map_err(|_| io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed"))?;
-		send_buf.extend_from_slice(buf);
-		Poll::Ready(Ok(buf.len()))
-	}
-	fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		// Swap buffers
+		std::mem::swap(send_buf.deref_mut(), &mut this.buffer);
+		this.buffer.clear();
 		Poll::Ready(Ok(()))
 	}
 	fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -287,17 +307,22 @@ impl AsyncWrite for SharedWriter {
 }
 impl io::Write for SharedWriter {
 	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		match self.sender.try_send_ref() {
-			Ok(mut send_buf) => {
-				send_buf.extend_from_slice(buf);
-				Ok(buf.len())
+		self.buffer.extend_from_slice(buf);
+		if self.buffer.ends_with(b"\n") {
+			match self.sender.try_send_ref() {
+				Ok(mut send_buf) => {
+					std::mem::swap(send_buf.deref_mut(), &mut self.buffer);
+					self.buffer.clear();
+				}
+				Err(TrySendError::Full(_)) => return Err(io::ErrorKind::WouldBlock.into()),
+				_ => return Err(io::Error::new(
+					io::ErrorKind::Other,
+					"thingbuf receiver has closed",
+				)),
 			}
-			Err(TrySendError::Full(_)) => Err(io::ErrorKind::WouldBlock.into()),
-			_ => Err(io::Error::new(
-				io::ErrorKind::Other,
-				"thingbuf receiver has closed",
-			)),
 		}
+		Ok(buf.len())
+		
 	}
 	fn flush(&mut self) -> io::Result<()> {
 		Ok(())
@@ -326,7 +351,7 @@ impl Readline {
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
 		readline.raw_term.flush()?;
-		Ok((readline, SharedWriter { sender }))
+		Ok((readline, SharedWriter { sender, buffer: Vec::new() }))
 	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()

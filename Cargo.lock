@@ -655,6 +655,7 @@ version = "0.2.0"
 dependencies = [
  "crossterm",
  "futures",
+ "pin-project",
  "thingbuf",
  "thiserror",
 ]
