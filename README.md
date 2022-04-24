@@ -9,12 +9,13 @@ Inspired by `rustyline` , `async-readline` & `termion-async-input`. Built using 
 
 ## Features
 
- * Simple UTF8 (Note: currently panics when using compound characters)
+ * Full Unicode Support (Including Graphene Clusters)
  * Multiline Editing
  * Ctrl-C, Ctrl-D are returned as `Err(Interrupt)` and `Err(Eof)` respectively.
  * Ctrl-U to clear line before cursor
- * Ctrl-left & right to move between words
+ * Ctrl-left & right to move to next or previous whitespace
  * Ctrl-L clear screen
+ * Extensible design based on `crossterm`'s `event-stream` feature
 
 Feel free to PR to add more features!
 

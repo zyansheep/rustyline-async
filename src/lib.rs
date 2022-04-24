@@ -1,4 +1,9 @@
-use std::{io::{self, stdout, Stdout, Write}, ops::DerefMut, pin::Pin, task::{Context, Poll}};
+use std::{
+	io::{self, stdout, Stdout, Write},
+	ops::DerefMut,
+	pin::Pin,
+	task::{Context, Poll},
+};
 
 use futures::prelude::*;
 
@@ -33,7 +38,6 @@ struct LineState {
 	// Index of grapheme in line
 	line_cursor_grapheme: usize,
 	// Column of grapheme in line
-
 	current_column: u16,
 
 	cluster_buffer: String, // buffer for holding partial grapheme clusters as they come in
@@ -79,20 +83,26 @@ impl LineState {
 		// self.reset_cursor(term)?;
 		if change > 0 {
 			let count = self.line.graphemes(true).count();
-			self.line_cursor_grapheme = usize::min(self.line_cursor_grapheme as usize + change as usize, count);
+			self.line_cursor_grapheme =
+				usize::min(self.line_cursor_grapheme as usize + change as usize, count);
 		} else {
-			self.line_cursor_grapheme = self.line_cursor_grapheme.saturating_sub((-change) as usize);
+			self.line_cursor_grapheme =
+				self.line_cursor_grapheme.saturating_sub((-change) as usize);
 		}
 		let (pos, str) = self.current_grapheme().unwrap_or((0, ""));
 		let pos = pos + str.len();
-		self.current_column = (self.prompt.len() + UnicodeWidthStr::width(&self.line[0..pos])) as u16;
-		
+		self.current_column =
+			(self.prompt.len() + UnicodeWidthStr::width(&self.line[0..pos])) as u16;
+
 		// self.set_cursor(term)?;
-		
+
 		Ok(())
 	}
 	fn current_grapheme(&self) -> Option<(usize, &str)> {
-		self.line.grapheme_indices(true).take(self.line_cursor_grapheme).last()
+		self.line
+			.grapheme_indices(true)
+			.take(self.line_cursor_grapheme)
+			.last()
 	}
 	fn reset_cursor(&self, term: &mut impl Write) -> io::Result<()> {
 		self.move_to_beginning(term, self.current_column)
@@ -191,9 +201,8 @@ impl LineState {
 						let len = pos + str.len();
 						self.line.replace_range(pos..len, "");
 						self.move_cursor(-1)?;
-	
-						self.render(term)?;
 
+						self.render(term)?;
 					}
 				}
 				KeyCode::Left => {
@@ -215,20 +224,21 @@ impl LineState {
 
 					let (g_pos, g_str) = self.current_grapheme().unwrap_or((0, ""));
 					let pos = g_pos + g_str.len();
-					
+
 					self.line.insert(pos, c);
-					
+
 					if prev_len != new_len {
 						self.move_cursor(1)?;
 						if prev_len > 0 {
-							if let Some((pos, str)) = self.cluster_buffer.grapheme_indices(true).next() {
+							if let Some((pos, str)) =
+								self.cluster_buffer.grapheme_indices(true).next()
+							{
 								let len = str.len();
 								self.cluster_buffer.replace_range(pos..len, "");
 							}
 						}
 					}
 					self.render(term)?;
-					
 				}
 				_ => {}
 			},
@@ -268,21 +278,27 @@ impl LineState {
 					self.reset_cursor(term)?;
 					let count = self.line.graphemes(true).count();
 					let skip_count = count - self.line_cursor_grapheme;
-					if let Some((pos, _)) = self.line.grapheme_indices(true)
+					if let Some((pos, _)) = self
+						.line
+						.grapheme_indices(true)
 						.rev()
 						.skip(skip_count)
-						.skip_while(|(_, str)|*str == " ")
+						.skip_while(|(_, str)| *str == " ")
 						.find(|(_, str)| *str == " ")
 					{
 						let change = pos as isize - self.line_cursor_grapheme as isize;
 						self.move_cursor(change + 1)?;
-					} else { self.move_cursor(-10000)? }
+					} else {
+						self.move_cursor(-10000)?
+					}
 					self.set_cursor(term)?;
 				}
 				KeyCode::Right => {
 					self.reset_cursor(term)?;
-					if let Some((pos, _)) = self.line
-						.grapheme_indices(true).skip(self.line_cursor_grapheme)
+					if let Some((pos, _)) = self
+						.line
+						.grapheme_indices(true)
+						.skip(self.line_cursor_grapheme)
 						.skip_while(|(_, c)| *c == " ")
 						.find(|(_, c)| *c == " ")
 					{
