@@ -14,6 +14,8 @@ futures = "0.3.21"
 pin-project = "1.0.10"
 thingbuf = "0.1.1"
 thiserror = "1.0.30"
+unicode-segmentation = "1.9.0"
+unicode-width = "0.1.9"
 
 [workspace]
 members = [
