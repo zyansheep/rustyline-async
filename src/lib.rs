@@ -215,6 +215,16 @@ impl LineState {
 					self.move_cursor(1)?;
 					self.set_cursor(term)?;
 				}
+				KeyCode::Home => {
+					self.reset_cursor(term)?;
+					self.move_cursor(-100000)?;
+					self.set_cursor(term)?;
+				}
+				KeyCode::End => {
+					self.reset_cursor(term)?;
+					self.move_cursor(100000)?;
+					self.set_cursor(term)?;
+				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
 					self.clear(term)?;
