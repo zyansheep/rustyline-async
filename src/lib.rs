@@ -1,7 +1,3 @@
-use std::borrow::Borrow;
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
-use std::rc::Rc;
 use std::{
 	io::{self, stdout, Stdout, Write},
 	ops::DerefMut,
@@ -34,63 +30,10 @@ pub enum ReadlineError {
 	Closed,
 }
 
-#[derive(Debug)]
-enum Cow<T: Clone, R: Borrow<T>> {
-	Owned(T),
-	Borrowed(R),
-}
-impl<T: Clone, R: Borrow<T>> Cow<T, R> {
-	pub fn to_mut(&mut self) -> &mut T {
-		match self {
-			Self::Owned(val) => val,
-			Self::Borrowed(ref reference) => {
-				let val: &T = reference.borrow();
-				*self = Self::Owned(val.clone());
-				match self {
-					Cow::Owned(val) => val,
-					Cow::Borrowed(_) => {
-						unreachable!()
-					}
-				}
-			}
-		}
-	}
-
-	pub fn into_owned(self) -> T {
-		match self {
-			Cow::Owned(val) => val,
-			Cow::Borrowed(reference) => reference.borrow().clone(),
-		}
-	}
-}
-impl<T: Clone, R: Borrow<T>> Deref for Cow<T, R> {
-	type Target = T;
-
-	fn deref(&self) -> &Self::Target {
-		match self {
-			Cow::Owned(val) => val,
-			Cow::Borrowed(val) => val.borrow(),
-		}
-	}
-}
-impl<T: Clone + Default, R: Borrow<T>> Default for Cow<T, R> {
-	fn default() -> Self {
-		Self::Owned(T::default())
-	}
-}
-impl<T: Clone + Display, R: Borrow<T>> Display for Cow<T, R> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Cow::Owned(val) => val.fmt(f),
-			Cow::Borrowed(reference) => reference.borrow().fmt(f),
-		}
-	}
-}
-
 #[derive(Default)]
 struct LineState {
 	// Unicode Line
-	line: Cow<String, Rc<String>>,
+	line: String,
 	// Index of grapheme in line
 	line_cursor_grapheme: usize,
 	// Column of grapheme in line
@@ -104,7 +47,7 @@ struct LineState {
 
 	term_size: (u16, u16),
 
-	history: Vec<Rc<String>>,
+	history: Vec<String>,
 	history_position: usize,
 }
 
@@ -234,7 +177,7 @@ impl LineState {
 		if self.history_position >= self.history.len() {
 			self.history_position += 1;
 		}
-		self.history.push(Rc::new(entry));
+		self.history.push(entry);
 	}
 	fn handle_event(
 		&mut self,
@@ -257,7 +200,7 @@ impl LineState {
 					self.move_cursor(-100000)?;
 					self.render(term)?;
 					self.history_position = self.history.len();
-					return Ok(Some(line.into_owned()));
+					return Ok(Some(line));
 				}
 				// Delete character from line
 				KeyCode::Backspace => {
@@ -265,7 +208,7 @@ impl LineState {
 						self.clear(term)?;
 
 						let len = pos + str.len();
-						self.line.to_mut().replace_range(pos..len, "");
+						self.line.replace_range(pos..len, "");
 						self.move_cursor(-1)?;
 
 						self.render(term)?;
@@ -285,8 +228,7 @@ impl LineState {
 					if self.history_position != 0 {
 						self.clear(term)?;
 						self.history_position -= 1;
-						self.line =
-							Cow::Borrowed(self.history.get(self.history_position).unwrap().clone());
+						self.line = self.history.get(self.history_position).unwrap().clone();
 						self.move_cursor(100000)?;
 						self.render(term)?;
 					}
@@ -295,14 +237,13 @@ impl LineState {
 					if self.history_position + 1 < self.history.len() {
 						self.clear(term)?;
 						self.history_position += 1;
-						self.line =
-							Cow::Borrowed(self.history.get(self.history_position).unwrap().clone());
+						self.line = self.history.get(self.history_position).unwrap().clone();
 						self.move_cursor(100000)?;
 						self.render(term)?;
 					} else if self.history_position + 1 == self.history.len() {
 						self.clear(term)?;
 						self.history_position += 1;
-						self.line = Cow::Owned(String::new());
+						self.line.clear();
 						self.move_cursor(-100000)?;
 						self.render(term)?;
 					}
@@ -317,7 +258,7 @@ impl LineState {
 					let (g_pos, g_str) = self.current_grapheme().unwrap_or((0, ""));
 					let pos = g_pos + g_str.len();
 
-					self.line.to_mut().insert(pos, c);
+					self.line.insert(pos, c);
 
 					if prev_len != new_len {
 						self.move_cursor(1)?;
@@ -348,7 +289,7 @@ impl LineState {
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
-					self.line.to_mut().clear();
+					self.line.clear();
 					self.move_cursor(-10000)?;
 					self.clear_and_render(term)?;
 					return Err(ReadlineError::Interrupted);
@@ -360,7 +301,7 @@ impl LineState {
 				KeyCode::Char('u') => {
 					if let Some((pos, str)) = self.current_grapheme() {
 						let pos = pos + str.len();
-						self.line.to_mut().drain(0..pos);
+						self.line.drain(0..pos);
 						self.move_cursor(-10000)?;
 						self.clear_and_render(term)?;
 					}
