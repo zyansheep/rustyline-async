@@ -273,6 +273,16 @@ impl LineState {
 						self.clear_and_render(term)?;
 					}
 				}
+				KeyCode::Char('a') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(-100000)?;
+					self.set_cursor(term)?;
+				}
+				KeyCode::Char('e') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(100000)?;
+					self.set_cursor(term)?;
+				}
 				// Move cursor left to previous word
 				KeyCode::Left => {
 					self.reset_cursor(term)?;
