@@ -32,7 +32,9 @@ async fn main() -> Result<(), ReadlineError> {
 			}
 			command = rl.readline().fuse() => match command {
 				Ok(line) => {
-					match line.trim() {
+					let line = line.trim();
+					rl.add_history_entry(line.to_owned());
+					match line {
 						"start task" => {
 							writeln!(stdout, "Starting the task...")?;
 							running_first = true;

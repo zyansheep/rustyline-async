@@ -1,3 +1,7 @@
+use std::borrow::Borrow;
+use std::fmt::{Display, Formatter};
+use std::ops::Deref;
+use std::rc::Rc;
 use std::{
 	io::{self, stdout, Stdout, Write},
 	ops::DerefMut,
@@ -5,14 +9,13 @@ use std::{
 	task::{Context, Poll},
 };
 
-use futures::prelude::*;
-
 use crossterm::{
 	cursor,
 	event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
 	terminal::{self, disable_raw_mode, Clear, ClearType::*},
 	QueueableCommand,
 };
+use futures::prelude::*;
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
 use unicode_segmentation::UnicodeSegmentation;
@@ -31,10 +34,63 @@ pub enum ReadlineError {
 	Closed,
 }
 
+#[derive(Debug)]
+enum Cow<T: Clone, R: Borrow<T>> {
+	Owned(T),
+	Borrowed(R),
+}
+impl<T: Clone, R: Borrow<T>> Cow<T, R> {
+	pub fn to_mut(&mut self) -> &mut T {
+		match self {
+			Self::Owned(val) => val,
+			Self::Borrowed(ref reference) => {
+				let val: &T = reference.borrow();
+				*self = Self::Owned(val.clone());
+				match self {
+					Cow::Owned(val) => val,
+					Cow::Borrowed(_) => {
+						unreachable!()
+					}
+				}
+			}
+		}
+	}
+
+	pub fn into_owned(self) -> T {
+		match self {
+			Cow::Owned(val) => val,
+			Cow::Borrowed(reference) => reference.borrow().clone(),
+		}
+	}
+}
+impl<T: Clone, R: Borrow<T>> Deref for Cow<T, R> {
+	type Target = T;
+
+	fn deref(&self) -> &Self::Target {
+		match self {
+			Cow::Owned(val) => val,
+			Cow::Borrowed(val) => val.borrow(),
+		}
+	}
+}
+impl<T: Clone + Default, R: Borrow<T>> Default for Cow<T, R> {
+	fn default() -> Self {
+		Self::Owned(T::default())
+	}
+}
+impl<T: Clone + Display, R: Borrow<T>> Display for Cow<T, R> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Cow::Owned(val) => val.fmt(f),
+			Cow::Borrowed(reference) => reference.borrow().fmt(f),
+		}
+	}
+}
+
 #[derive(Default)]
 struct LineState {
 	// Unicode Line
-	line: String,
+	line: Cow<String, Rc<String>>,
 	// Index of grapheme in line
 	line_cursor_grapheme: usize,
 	// Column of grapheme in line
@@ -47,6 +103,9 @@ struct LineState {
 	last_line_completed: bool,
 
 	term_size: (u16, u16),
+
+	history: Vec<Rc<String>>,
+	history_position: usize,
 }
 
 impl LineState {
@@ -171,6 +230,12 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
+	fn add_history_entry(&mut self, entry: String) {
+		if self.history_position >= self.history.len() {
+			self.history_position += 1;
+		}
+		self.history.push(Rc::new(entry));
+	}
 	fn handle_event(
 		&mut self,
 		event: Event,
@@ -191,7 +256,8 @@ impl LineState {
 					let line = std::mem::take(&mut self.line);
 					self.move_cursor(-100000)?;
 					self.render(term)?;
-					return Ok(Some(line));
+					self.history_position = self.history.len();
+					return Ok(Some(line.into_owned()));
 				}
 				// Delete character from line
 				KeyCode::Backspace => {
@@ -199,7 +265,7 @@ impl LineState {
 						self.clear(term)?;
 
 						let len = pos + str.len();
-						self.line.replace_range(pos..len, "");
+						self.line.to_mut().replace_range(pos..len, "");
 						self.move_cursor(-1)?;
 
 						self.render(term)?;
@@ -215,6 +281,32 @@ impl LineState {
 					self.move_cursor(1)?;
 					self.set_cursor(term)?;
 				}
+				KeyCode::Up => {
+					if self.history_position != 0 {
+						self.clear(term)?;
+						self.history_position -= 1;
+						self.line =
+							Cow::Borrowed(self.history.get(self.history_position).unwrap().clone());
+						self.move_cursor(100000)?;
+						self.render(term)?;
+					}
+				}
+				KeyCode::Down => {
+					if self.history_position + 1 < self.history.len() {
+						self.clear(term)?;
+						self.history_position += 1;
+						self.line =
+							Cow::Borrowed(self.history.get(self.history_position).unwrap().clone());
+						self.move_cursor(100000)?;
+						self.render(term)?;
+					} else if self.history_position + 1 == self.history.len() {
+						self.clear(term)?;
+						self.history_position += 1;
+						self.line = Cow::Owned(String::new());
+						self.move_cursor(-100000)?;
+						self.render(term)?;
+					}
+				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
 					self.clear(term)?;
@@ -225,7 +317,7 @@ impl LineState {
 					let (g_pos, g_str) = self.current_grapheme().unwrap_or((0, ""));
 					let pos = g_pos + g_str.len();
 
-					self.line.insert(pos, c);
+					self.line.to_mut().insert(pos, c);
 
 					if prev_len != new_len {
 						self.move_cursor(1)?;
@@ -256,7 +348,7 @@ impl LineState {
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
 					self.print(&format!("{}{}", self.prompt, self.line), term)?;
-					self.line.clear();
+					self.line.to_mut().clear();
 					self.move_cursor(-10000)?;
 					self.clear_and_render(term)?;
 					return Err(ReadlineError::Interrupted);
@@ -268,7 +360,7 @@ impl LineState {
 				KeyCode::Char('u') => {
 					if let Some((pos, str)) = self.current_grapheme() {
 						let pos = pos + str.len();
-						self.line.drain(0..pos);
+						self.line.to_mut().drain(0..pos);
 						self.move_cursor(-10000)?;
 						self.clear_and_render(term)?;
 					}
@@ -387,7 +479,7 @@ impl io::Write for SharedWriter {
 					return Err(io::Error::new(
 						io::ErrorKind::Other,
 						"thingbuf receiver has closed",
-					))
+					));
 				}
 			}
 		}
@@ -401,7 +493,8 @@ impl io::Write for SharedWriter {
 /// Structure that contains all the data necessary to read and write lines in an asyncronous manner
 pub struct Readline {
 	raw_term: Stdout,
-	event_stream: EventStream, // Stream of events
+	event_stream: EventStream,
+	// Stream of events
 	line_receiver: Receiver<Vec<u8>>,
 
 	line: LineState, // Current line
@@ -454,6 +547,9 @@ impl Readline {
 				}
 			}
 		}
+	}
+	pub fn add_history_entry(&mut self, entry: String) {
+		self.line.add_history_entry(entry);
 	}
 }
 
