@@ -4,12 +4,14 @@ use std::{
 	pin::Pin,
 	task::{Context, Poll},
 };
+use std::cmp::min;
+use std::collections::VecDeque;
 
 use crossterm::{
 	cursor,
 	event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
-	terminal::{self, disable_raw_mode, Clear, ClearType::*},
 	QueueableCommand,
+	terminal::{self, Clear, ClearType::*, disable_raw_mode},
 };
 use futures::prelude::*;
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
@@ -31,6 +33,39 @@ pub enum ReadlineError {
 }
 
 #[derive(Default)]
+struct History {
+	entries: VecDeque<String>,
+	max_size: usize,
+	// The current offset in the history (1-indexed). 0 indicates a fresh line.
+	offset: usize,
+}
+
+impl History {
+	fn new(max_size: usize) -> History {
+		History {
+			max_size,
+
+			..Default::default()
+		}
+	}
+
+	fn push(&mut self, entry: String) {
+		if self.entries.len() >= self.max_size {
+			self.entries.pop_back();
+		}
+
+		if self.offset != 0 {
+			self.offset = min(self.offset + 1, self.max_size);
+		}
+		self.entries.push_front(entry);
+	}
+
+	fn current(&self) -> Option<&String> {
+		self.entries.get(self.offset - 1)
+	}
+}
+
+#[derive(Default)]
 struct LineState {
 	// Unicode Line
 	line: String,
@@ -47,18 +82,23 @@ struct LineState {
 
 	term_size: (u16, u16),
 
-	history: Vec<String>,
-	history_position: usize,
+	history: Option<History>,
 }
 
 impl LineState {
-	fn new(prompt: String, term_size: (u16, u16)) -> Self {
+	fn new(prompt: String, term_size: (u16, u16), max_history_size: usize) -> Self {
 		let current_column = prompt.len() as u16;
 		Self {
 			prompt,
 			last_line_completed: true,
 			term_size,
 			current_column,
+
+			history: if max_history_size == 0 {
+				None
+			} else {
+				Some(History::new(max_history_size))
+			},
 
 			..Default::default()
 		}
@@ -174,10 +214,9 @@ impl LineState {
 		Ok(())
 	}
 	fn add_history_entry(&mut self, entry: String) {
-		if self.history_position >= self.history.len() {
-			self.history_position += 1;
+		if let Some(ref mut history) = self.history {
+			history.push(entry);
 		}
-		self.history.push(entry);
 	}
 	fn handle_event(
 		&mut self,
@@ -199,7 +238,9 @@ impl LineState {
 					let line = std::mem::take(&mut self.line);
 					self.move_cursor(-100000)?;
 					self.render(term)?;
-					self.history_position = self.history.len();
+					if let Some(ref mut history) = self.history {
+						history.offset = 0;
+					}
 					return Ok(Some(line));
 				}
 				// Delete character from line
@@ -225,27 +266,33 @@ impl LineState {
 					self.set_cursor(term)?;
 				}
 				KeyCode::Up => {
-					if self.history_position != 0 {
-						self.clear(term)?;
-						self.history_position -= 1;
-						self.line = self.history.get(self.history_position).unwrap().clone();
-						self.move_cursor(100000)?;
-						self.render(term)?;
+					if let Some(ref mut history) = self.history {
+						if history.offset < history.entries.len() {
+							// history_offset starts at 1, so it always points to the next history entry
+							history.offset += 1;
+							self.line = history.current().unwrap().clone();
+							self.clear(term)?;
+							self.move_cursor(100000)?;
+							self.render(term)?;
+						}
 					}
 				}
 				KeyCode::Down => {
-					if self.history_position + 1 < self.history.len() {
-						self.clear(term)?;
-						self.history_position += 1;
-						self.line = self.history.get(self.history_position).unwrap().clone();
-						self.move_cursor(100000)?;
-						self.render(term)?;
-					} else if self.history_position + 1 == self.history.len() {
-						self.clear(term)?;
-						self.history_position += 1;
-						self.line.clear();
-						self.move_cursor(-100000)?;
-						self.render(term)?;
+					if let Some(ref mut history) = self.history {
+						if history.offset > 0 {
+							history.offset -= 1;
+
+							if history.offset > 0 {
+								self.line = history.current().unwrap().clone();
+								self.clear(term)?;
+								self.move_cursor(100000)?;
+							} else {
+								self.line.clear();
+								self.clear(term)?;
+								self.move_cursor(-100000)?;
+							}
+							self.render(term)?;
+						}
 					}
 				}
 				// Add character to line and output
@@ -443,13 +490,16 @@ pub struct Readline {
 
 impl Readline {
 	pub fn new(prompt: String) -> Result<(Self, SharedWriter), ReadlineError> {
+		Self::with_history(prompt, 0)
+	}
+	pub fn with_history(prompt: String, max_history_size: usize) -> Result<(Self, SharedWriter), ReadlineError> {
 		let (sender, line_receiver) = thingbuf::mpsc::channel(500);
 		terminal::enable_raw_mode()?;
 		let mut readline = Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
-			line: LineState::new(prompt, terminal::size()?),
+			line: LineState::new(prompt, terminal::size()?, max_history_size),
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
