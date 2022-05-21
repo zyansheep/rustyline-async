@@ -283,11 +283,13 @@ impl LineState {
 						self.clear_and_render(term)?;
 					}
 				}
+				#[cfg(feature="emacs")]
 				KeyCode::Char('a') => {
 					self.reset_cursor(term)?;
 					self.move_cursor(-100000)?;
 					self.set_cursor(term)?;
 				}
+				#[cfg(feature="emacs")]
 				KeyCode::Char('e') => {
 					self.reset_cursor(term)?;
 					self.move_cursor(100000)?;
