@@ -491,8 +491,7 @@ impl io::Write for SharedWriter {
 /// Structure that contains all the data necessary to read and write lines in an asyncronous manner
 pub struct Readline {
 	raw_term: Stdout,
-	event_stream: EventStream,
-	// Stream of events
+	event_stream: EventStream, // Stream of events
 	line_receiver: Receiver<Vec<u8>>,
 
 	line: LineState, // Current line
