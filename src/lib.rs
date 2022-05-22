@@ -6,6 +6,7 @@ use std::{
 };
 use std::cmp::min;
 use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use crossterm::{
 	cursor,
@@ -49,6 +50,10 @@ impl History {
 		}
 	}
 
+	fn len(&self) -> usize {
+		self.entries.len()
+	}
+
 	fn push(&mut self, entry: String) {
 		if self.entries.len() >= self.max_size {
 			self.entries.pop_back();
@@ -82,7 +87,7 @@ struct LineState {
 
 	term_size: (u16, u16),
 
-	history: Option<History>,
+	history: Option<Mutex<History>>,
 }
 
 impl LineState {
@@ -97,7 +102,7 @@ impl LineState {
 			history: if max_history_size == 0 {
 				None
 			} else {
-				Some(History::new(max_history_size))
+				Some(Mutex::new(History::new(max_history_size)))
 			},
 
 			..Default::default()
@@ -213,9 +218,9 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	fn add_history_entry(&mut self, entry: String) {
-		if let Some(ref mut history) = self.history {
-			history.push(entry);
+	fn add_history_entry(&self, entry: String) {
+		if let Some(ref history) = self.history {
+			history.lock().expect("Failed to acquire lock on history").push(entry);
 		}
 	}
 	fn handle_event(
@@ -238,8 +243,8 @@ impl LineState {
 					let line = std::mem::take(&mut self.line);
 					self.move_cursor(-100000)?;
 					self.render(term)?;
-					if let Some(ref mut history) = self.history {
-						history.offset = 0;
+					if let Some(ref history) = self.history {
+						history.lock().expect("Failed to acquire lock on history").offset = 0;
 					}
 					return Ok(Some(line));
 				}
@@ -266,11 +271,13 @@ impl LineState {
 					self.set_cursor(term)?;
 				}
 				KeyCode::Up => {
-					if let Some(ref mut history) = self.history {
-						if history.offset < history.entries.len() {
-							// history_offset starts at 1, so it always points to the next history entry
+					if let Some(ref history) = self.history {
+						let mut history = history.lock().expect("Failed to acquire lock on history");
+						if history.offset < history.len() {
 							history.offset += 1;
-							self.line = history.current().unwrap().clone();
+							self.line = history.current().map(|s| s.clone()).unwrap_or_default();
+							drop(history); // Unlock history
+
 							self.clear(term)?;
 							self.move_cursor(100000)?;
 							self.render(term)?;
@@ -278,16 +285,19 @@ impl LineState {
 					}
 				}
 				KeyCode::Down => {
-					if let Some(ref mut history) = self.history {
+					if let Some(ref history) = self.history {
+						let mut history = history.lock().expect("Failed to acquire lock on history");
 						if history.offset > 0 {
 							history.offset -= 1;
 
 							if history.offset > 0 {
-								self.line = history.current().unwrap().clone();
+								self.line = history.current().map(|s| s.clone()).unwrap_or_default();
+								drop(history); // Unlock history
 								self.clear(term)?;
 								self.move_cursor(100000)?;
 							} else {
 								self.line.clear();
+								drop(history); // Unlock history
 								self.clear(term)?;
 								self.move_cursor(-100000)?;
 							}
@@ -539,7 +549,7 @@ impl Readline {
 			}
 		}
 	}
-	pub fn add_history_entry(&mut self, entry: String) {
+	pub fn add_history_entry(&self, entry: String) {
 		self.line.add_history_entry(entry);
 	}
 }
