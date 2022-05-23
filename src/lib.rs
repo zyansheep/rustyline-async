@@ -225,7 +225,6 @@ impl LineState {
 					self.move_cursor(100000)?;
 					self.set_cursor(term)?;
 				}
-				// Add character to line and output
 				KeyCode::Char(c) => {
 					self.clear(term)?;
 					let prev_len = self.cluster_buffer.graphemes(true).count();
@@ -276,6 +275,7 @@ impl LineState {
 					term.queue(Clear(All))?.queue(cursor::MoveTo(0, 0))?;
 					self.clear_and_render(term)?;
 				}
+				// Clear to start
 				KeyCode::Char('u') => {
 					if let Some((pos, str)) = self.current_grapheme() {
 						let pos = pos + str.len();
@@ -284,17 +284,16 @@ impl LineState {
 						self.clear_and_render(term)?;
 					}
 				}
+				// Move to beginning
 				#[cfg(feature="emacs")]
 				KeyCode::Char('a') => {
-					self.print("ctrl-a\n", term)?;
 					self.reset_cursor(term)?;
 					self.move_cursor(-100000)?;
 					self.set_cursor(term)?;
 				}
+				// Move to end
 				#[cfg(feature="emacs")]
 				KeyCode::Char('e') => {
-					self.print("ctrl-e\n", term)?;
-
 					self.reset_cursor(term)?;
 					self.move_cursor(100000)?;
 					self.set_cursor(term)?;
@@ -319,6 +318,7 @@ impl LineState {
 					}
 					self.set_cursor(term)?;
 				}
+				// Move cursor right to next word
 				KeyCode::Right => {
 					self.reset_cursor(term)?;
 					if let Some((pos, _)) = self
