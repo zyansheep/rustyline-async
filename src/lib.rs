@@ -285,14 +285,14 @@ impl LineState {
 					}
 				}
 				// Move to beginning
-				#[cfg(feature="emacs")]
+				#[cfg(feature = "emacs")]
 				KeyCode::Char('a') => {
 					self.reset_cursor(term)?;
 					self.move_cursor(-100000)?;
 					self.set_cursor(term)?;
 				}
 				// Move to end
-				#[cfg(feature="emacs")]
+				#[cfg(feature = "emacs")]
 				KeyCode::Char('e') => {
 					self.reset_cursor(term)?;
 					self.move_cursor(100000)?;
