@@ -14,6 +14,7 @@ Inspired by `rustyline` , `async-readline` & `termion-async-input`. Built using 
  * Ctrl-C, Ctrl-D are returned as `Err(Interrupt)` and `Err(Eof)` respectively.
  * Ctrl-U to clear line before cursor
  * Ctrl-left & right to move to next or previous whitespace
+ * Home/Ctrl-A and End/Ctrl-E to jump to the start and end of the input
  * Ctrl-L clear screen
  * Extensible design based on `crossterm`'s `event-stream` feature
 

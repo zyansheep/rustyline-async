@@ -24,6 +24,8 @@ members = [
 ]
 
 [features]
+default = ["emacs"]
+emacs = []
 
 [package.metadata.nix]
 build = true

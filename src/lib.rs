@@ -269,6 +269,16 @@ impl LineState {
 					self.move_cursor(1)?;
 					self.set_cursor(term)?;
 				}
+				KeyCode::Home => {
+					self.reset_cursor(term)?;
+					self.move_cursor(-100000)?;
+					self.set_cursor(term)?;
+				}
+				KeyCode::End => {
+					self.reset_cursor(term)?;
+					self.move_cursor(100000)?;
+					self.set_cursor(term)?;
+				}
 				KeyCode::Up => {
 					if let Some(ref history) = self.history {
 						let mut history = history.lock().await;
@@ -350,10 +360,12 @@ impl LineState {
 					self.clear_and_render(term)?;
 					return Err(ReadlineError::Interrupted);
 				}
+				// Clear all
 				KeyCode::Char('l') => {
-					term.queue(Clear(All))?.queue(cursor::MoveToColumn(0))?;
+					term.queue(Clear(All))?.queue(cursor::MoveTo(0, 0))?;
 					self.clear_and_render(term)?;
 				}
+				// Clear to start
 				KeyCode::Char('u') => {
 					if let Some((pos, str)) = self.current_grapheme() {
 						let pos = pos + str.len();
@@ -361,6 +373,20 @@ impl LineState {
 						self.move_cursor(-10000)?;
 						self.clear_and_render(term)?;
 					}
+				}
+				// Move to beginning
+				#[cfg(feature = "emacs")]
+				KeyCode::Char('a') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(-100000)?;
+					self.set_cursor(term)?;
+				}
+				// Move to end
+				#[cfg(feature = "emacs")]
+				KeyCode::Char('e') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(100000)?;
+					self.set_cursor(term)?;
 				}
 				// Move cursor left to previous word
 				KeyCode::Left => {
@@ -382,6 +408,7 @@ impl LineState {
 					}
 					self.set_cursor(term)?;
 				}
+				// Move cursor right to next word
 				KeyCode::Right => {
 					self.reset_cursor(term)?;
 					if let Some((pos, _)) = self
