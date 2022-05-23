@@ -6,7 +6,6 @@ use std::{
 };
 use std::cmp::min;
 use std::collections::VecDeque;
-use std::sync::Mutex;
 
 use crossterm::{
 	cursor,
@@ -87,7 +86,7 @@ struct LineState {
 
 	term_size: (u16, u16),
 
-	history: Option<Mutex<History>>,
+	history: Option<futures::lock::Mutex<History>>,
 }
 
 impl LineState {
@@ -102,7 +101,7 @@ impl LineState {
 			history: if max_history_size == 0 {
 				None
 			} else {
-				Some(Mutex::new(History::new(max_history_size)))
+				Some(futures::lock::Mutex::new(History::new(max_history_size)))
 			},
 
 			..Default::default()
@@ -218,12 +217,12 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	fn add_history_entry(&self, entry: String) {
+	async fn add_history_entry(&self, entry: String) {
 		if let Some(ref history) = self.history {
-			history.lock().expect("Failed to acquire lock on history").push(entry);
+			history.lock().await.push(entry);
 		}
 	}
-	fn handle_event(
+	async fn handle_event(
 		&mut self,
 		event: Event,
 		term: &mut impl Write,
@@ -244,7 +243,7 @@ impl LineState {
 					self.move_cursor(-100000)?;
 					self.render(term)?;
 					if let Some(ref history) = self.history {
-						history.lock().expect("Failed to acquire lock on history").offset = 0;
+						history.lock().await.offset = 0;
 					}
 					return Ok(Some(line));
 				}
@@ -272,7 +271,7 @@ impl LineState {
 				}
 				KeyCode::Up => {
 					if let Some(ref history) = self.history {
-						let mut history = history.lock().expect("Failed to acquire lock on history");
+						let mut history = history.lock().await;
 						if history.offset < history.len() {
 							history.offset += 1;
 							self.line = history.current().map(|s| s.clone()).unwrap_or_default();
@@ -286,7 +285,7 @@ impl LineState {
 				}
 				KeyCode::Down => {
 					if let Some(ref history) = self.history {
-						let mut history = history.lock().expect("Failed to acquire lock on history");
+						let mut history = history.lock().await;
 						if history.offset > 0 {
 							history.offset -= 1;
 
@@ -529,7 +528,7 @@ impl Readline {
 			futures::select! {
 				event = self.event_stream.next().fuse() => match event {
 					Some(Ok(event)) => {
-						match self.line.handle_event(event, &mut self.raw_term) {
+						match self.line.handle_event(event, &mut self.raw_term).await {
 							Ok(Some(line)) => return Result::<_, ReadlineError>::Ok(line),
 							Err(e) => return Err(e),
 							Ok(None) => self.raw_term.flush()?,
@@ -548,8 +547,8 @@ impl Readline {
 			}
 		}
 	}
-	pub fn add_history_entry(&self, entry: String) {
-		self.line.add_history_entry(entry);
+	pub async fn add_history_entry(&self, entry: String) {
+		self.line.add_history_entry(entry).await;
 	}
 }
 
