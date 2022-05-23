@@ -271,8 +271,9 @@ impl LineState {
 					self.clear_and_render(term)?;
 					return Err(ReadlineError::Interrupted);
 				}
+				// Clear all
 				KeyCode::Char('l') => {
-					term.queue(Clear(All))?.queue(cursor::MoveToColumn(0))?;
+					term.queue(Clear(All))?.queue(cursor::MoveTo(0, 0))?;
 					self.clear_and_render(term)?;
 				}
 				KeyCode::Char('u') => {
@@ -285,12 +286,15 @@ impl LineState {
 				}
 				#[cfg(feature="emacs")]
 				KeyCode::Char('a') => {
+					self.print("ctrl-a\n", term)?;
 					self.reset_cursor(term)?;
 					self.move_cursor(-100000)?;
 					self.set_cursor(term)?;
 				}
 				#[cfg(feature="emacs")]
 				KeyCode::Char('e') => {
+					self.print("ctrl-e\n", term)?;
+
 					self.reset_cursor(term)?;
 					self.move_cursor(100000)?;
 					self.set_cursor(term)?;
