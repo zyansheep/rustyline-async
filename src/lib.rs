@@ -121,6 +121,7 @@ pub struct Readline {
 }
 
 impl Readline {
+	/// Create new Readline
 	pub fn new(prompt: String) -> Result<(Self, SharedWriter), ReadlineError> {
 		let (sender, line_receiver) = thingbuf::mpsc::channel(500);
 		terminal::enable_raw_mode()?;
@@ -146,13 +147,16 @@ impl Readline {
 			},
 		))
 	}
+	/// Set max history length
 	pub fn set_max_history(&mut self, max_size: usize) {
 		self.line.history.max_size = max_size;
 		self.line.history.entries.truncate(max_size);
 	}
+	/// Flush terminal
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
 	}
+	/// Polling function for readline, manages all input and output.
 	pub async fn readline(&mut self) -> Result<String, ReadlineError> {
 		loop {
 			futures::select! {
@@ -177,6 +181,7 @@ impl Readline {
 			}
 		}
 	}
+	/// Add history entry asyncronously, should resolve immediately unless sending too many history entries
 	pub async fn add_history_entry(&mut self, entry: String) -> Option<()> {
 		self.history_sender.send(entry).await.ok()
 	}
