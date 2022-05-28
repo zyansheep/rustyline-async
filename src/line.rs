@@ -45,10 +45,6 @@ impl LineState {
 			..Default::default()
 		}
 	}
-	fn set_line(&mut self, newline: &str) {
-		self.line.clear();
-		self.line += newline;
-	}
 	fn line_height(&self, pos: u16) -> u16 {
 		pos / self.term_size.0 // Gets the number of lines wrapped
 	}

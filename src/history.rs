@@ -46,14 +46,10 @@ impl History {
 				*index += 1;
 			}
 			Some(&self.entries[*index])
-		} else {
-			if self.entries.len() > 0 {
-				self.current_position = Some(0);
-				Some(&self.entries[0])
-			} else {
-				None
-			}
-		}
+		} else if !self.entries.is_empty() {
+			self.current_position = Some(0);
+			Some(&self.entries[0])
+		} else { None }
 	}
 	// Find previous history item that matches a given string from an index
 	pub fn search_previous(&mut self, _current: &str) -> Option<&str> {
