@@ -230,7 +230,7 @@ impl LineState {
 						self.clear(term)?;
 						self.move_cursor(100000)?;
 						self.render(term)?;
-					} 
+					}
 				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
