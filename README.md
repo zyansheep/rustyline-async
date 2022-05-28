@@ -9,12 +9,14 @@ Inspired by `rustyline` , `async-readline` & `termion-async-input`. Built using 
 
 ## Features
 
+ * Works on all platforms supported by `crossterm`.
  * Full Unicode Support (Including Graphene Clusters)
  * Multiline Editing
+ * In-memory History
  * Ctrl-C, Ctrl-D are returned as `Err(Interrupt)` and `Err(Eof)` respectively.
  * Ctrl-U to clear line before cursor
  * Ctrl-left & right to move to next or previous whitespace
- * Home/Ctrl-A and End/Ctrl-E to jump to the start and end of the input
+ * Home/Ctrl-A and End/Ctrl-E to jump to the start and end of the input (Ctrl-A & Ctrl-E can be toggled off with feature)
  * Ctrl-L clear screen
  * Extensible design based on `crossterm`'s `event-stream` feature
 
