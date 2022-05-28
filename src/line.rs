@@ -1,13 +1,10 @@
-
-use std::{
-	io::{self, Write},
-};
+use std::io::{self, Write};
 
 use crossterm::{
 	cursor,
 	event::{Event, KeyCode, KeyEvent, KeyModifiers},
-	QueueableCommand,
 	terminal::{Clear, ClearType::*},
+	QueueableCommand,
 };
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -49,7 +46,8 @@ impl LineState {
 		}
 	}
 	fn set_line(&mut self, newline: &str) {
-		self.line.clear(); self.line += newline;
+		self.line.clear();
+		self.line += newline;
 	}
 	fn line_height(&self, pos: u16) -> u16 {
 		pos / self.term_size.0 // Gets the number of lines wrapped
@@ -225,7 +223,8 @@ impl LineState {
 					if let Some(history) = &mut self.history {
 						// search for next history item, replace line if found.
 						if let Some(line) = history.search_next(&self.line) {
-							self.line.clear(); self.line += line;
+							self.line.clear();
+							self.line += line;
 							self.clear(term)?;
 							self.move_cursor(100000)?;
 							self.render(term)?;
@@ -238,7 +237,8 @@ impl LineState {
 					if let Some(history) = &mut self.history {
 						// search for next history item, replace line if found.
 						if let Some(line) = history.search_previous(&self.line) {
-							self.line.clear(); self.line += line;
+							self.line.clear();
+							self.line += line;
 							self.clear(term)?;
 							self.move_cursor(100000)?;
 							self.render(term)?;

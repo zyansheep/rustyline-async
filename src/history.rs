@@ -13,12 +13,15 @@ pub struct History {
 impl History {
 	pub fn new(max_size: usize) -> (History, Sender<String>) {
 		let (sender, receiver) = mpsc::channel(20);
-		(History {
-			entries: Default::default(),
-			max_size,
-			receiver,
-			current_position: None,
-		}, sender)
+		(
+			History {
+				entries: Default::default(),
+				max_size,
+				receiver,
+				current_position: None,
+			},
+			sender,
+		)
 	}
 	// Update history entries
 	pub async fn update(&mut self) {
@@ -53,7 +56,7 @@ impl History {
 		}
 	}
 	// Find previous history item that matches a given string from an index
-	pub fn search_previous(&mut self, current: &str) -> Option<&str> {
+	pub fn search_previous(&mut self, _current: &str) -> Option<&str> {
 		if let Some(index) = &mut self.current_position {
 			if *index == 0 {
 				self.current_position = None;
@@ -61,6 +64,8 @@ impl History {
 			}
 			*index -= 1;
 			Some(&self.entries[*index])
-		} else { None }
+		} else {
+			None
+		}
 	}
 }
