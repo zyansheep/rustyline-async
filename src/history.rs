@@ -3,26 +3,21 @@ use std::collections::VecDeque;
 use futures::channel::mpsc::{self, Receiver, Sender};
 
 pub struct History {
-	entries: VecDeque<String>,
-	max_size: usize,
+	pub entries: VecDeque<String>,
+	pub max_size: usize,
+	pub sender: Sender<String>,
 	receiver: Receiver<String>,
 
 	current_position: Option<usize>,
 }
+impl Default for History {
+    fn default() -> Self {
+		let (sender, receiver) = mpsc::channel(20);
+        Self { entries: Default::default(), max_size: Default::default(), sender, receiver, current_position: Default::default() }
+    }
+}
 
 impl History {
-	pub fn new(max_size: usize) -> (History, Sender<String>) {
-		let (sender, receiver) = mpsc::channel(20);
-		(
-			History {
-				entries: Default::default(),
-				max_size,
-				receiver,
-				current_position: None,
-			},
-			sender,
-		)
-	}
 	// Update history entries
 	pub async fn update(&mut self) {
 		// Receive all new lines

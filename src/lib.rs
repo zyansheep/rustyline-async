@@ -117,35 +117,22 @@ pub struct Readline {
 
 	line: LineState, // Current line
 
-	history_sender: Option<mpsc::Sender<String>>,
+	history_sender: mpsc::Sender<String>,
 }
 
 impl Readline {
 	pub fn new(prompt: String) -> Result<(Self, SharedWriter), ReadlineError> {
-		Self::create(prompt, None)
-	}
-	pub fn with_history(
-		prompt: String,
-		history_max_size: usize,
-	) -> Result<(Self, SharedWriter), ReadlineError> {
-		Self::create(prompt, Some(History::new(history_max_size)))
-	}
-	fn create(
-		prompt: String,
-		history: Option<(History, mpsc::Sender<String>)>,
-	) -> Result<(Self, SharedWriter), ReadlineError> {
 		let (sender, line_receiver) = thingbuf::mpsc::channel(500);
 		terminal::enable_raw_mode()?;
 
-		let (history, history_sender) = match history {
-			Some((a, b)) => (Some(a), Some(b)),
-			None => (None, None),
-		};
+		let line = LineState::new(prompt, terminal::size()?);
+		let history_sender = line.history.sender.clone();
+
 		let mut readline = Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
-			line: LineState::new(prompt, terminal::size()?, history),
+			line,
 			history_sender,
 		};
 		readline.line.render(&mut readline.raw_term)?;
@@ -158,6 +145,10 @@ impl Readline {
 				buffer: Vec::new(),
 			},
 		))
+	}
+	pub fn set_max_history(&mut self, max_size: usize) {
+		self.line.history.max_size = max_size;
+		self.line.history.entries.truncate(max_size);
 	}
 	pub fn flush(&mut self) -> io::Result<()> {
 		self.raw_term.flush()
@@ -187,11 +178,7 @@ impl Readline {
 		}
 	}
 	pub async fn add_history_entry(&mut self, entry: String) -> Option<()> {
-		if let Some(sender) = &mut self.history_sender {
-			sender.send(entry).await.ok()
-		} else {
-			None
-		}
+		self.history_sender.send(entry).await.ok()
 	}
 }
 

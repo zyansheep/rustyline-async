@@ -10,7 +10,8 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer1 = stream::interval(Duration::from_secs(2));
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
-	let (mut rl, mut stdout) = Readline::with_history("> ".to_owned(), 5).unwrap();
+	let (mut rl, mut stdout) = Readline::new("> ".to_owned()).unwrap();
+	rl.set_max_history(10);
 
 	simplelog::WriteLogger::init(
 		log::LevelFilter::Debug,

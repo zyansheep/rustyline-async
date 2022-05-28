@@ -29,18 +29,17 @@ pub struct LineState {
 
 	term_size: (u16, u16),
 
-	history: Option<History>,
+	pub history: History,
 }
 
 impl LineState {
-	pub fn new(prompt: String, term_size: (u16, u16), history: Option<History>) -> Self {
+	pub fn new(prompt: String, term_size: (u16, u16)) -> Self {
 		let current_column = prompt.len() as u16;
 		Self {
 			prompt,
 			last_line_completed: true,
 			term_size,
 			current_column,
-			history,
 
 			..Default::default()
 		}
@@ -161,9 +160,7 @@ impl LineState {
 		term: &mut impl Write,
 	) -> Result<Option<String>, ReadlineError> {
 		// Update history entries
-		if let Some(history) = &mut self.history {
-			history.update().await;
-		}
+		self.history.update().await;
 
 		match event {
 			// Regular Modifiers (None or Shift)
@@ -216,32 +213,24 @@ impl LineState {
 					self.set_cursor(term)?;
 				}
 				KeyCode::Up => {
-					if let Some(history) = &mut self.history {
-						// search for next history item, replace line if found.
-						if let Some(line) = history.search_next(&self.line) {
-							self.line.clear();
-							self.line += line;
-							self.clear(term)?;
-							self.move_cursor(100000)?;
-							self.render(term)?;
-						} else {
-							self.line.clear();
-						}
+					// search for next history item, replace line if found.
+					if let Some(line) = self.history.search_next(&self.line) {
+						self.line.clear();
+						self.line += line;
+						self.clear(term)?;
+						self.move_cursor(100000)?;
+						self.render(term)?;
 					}
 				}
 				KeyCode::Down => {
-					if let Some(history) = &mut self.history {
-						// search for next history item, replace line if found.
-						if let Some(line) = history.search_previous(&self.line) {
-							self.line.clear();
-							self.line += line;
-							self.clear(term)?;
-							self.move_cursor(100000)?;
-							self.render(term)?;
-						} else {
-							self.line.clear();
-						}
-					}
+					// search for next history item, replace line if found.
+					if let Some(line) = self.history.search_previous(&self.line) {
+						self.line.clear();
+						self.line += line;
+						self.clear(term)?;
+						self.move_cursor(100000)?;
+						self.render(term)?;
+					} 
 				}
 				// Add character to line and output
 				KeyCode::Char(c) => {
