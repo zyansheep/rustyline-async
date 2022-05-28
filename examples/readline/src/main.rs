@@ -11,7 +11,7 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
 	let (mut rl, mut stdout) = Readline::new("> ".to_owned()).unwrap();
-	rl.set_max_history(10);
+	// rl.set_max_history(10);
 
 	simplelog::WriteLogger::init(
 		log::LevelFilter::Debug,
@@ -34,7 +34,7 @@ async fn main() -> Result<(), ReadlineError> {
 			command = rl.readline().fuse() => match command {
 				Ok(line) => {
 					let line = line.trim();
-					rl.add_history_entry(line.to_owned()).await;
+					rl.add_history_entry(line.to_owned());
 					match line {
 						"start task" => {
 							writeln!(stdout, "Starting the task...")?;

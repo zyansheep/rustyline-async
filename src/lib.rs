@@ -117,7 +117,7 @@ pub struct Readline {
 
 	line: LineState, // Current line
 
-	history_sender: mpsc::Sender<String>,
+	history_sender: mpsc::UnboundedSender<String>,
 }
 
 impl Readline {
@@ -181,9 +181,9 @@ impl Readline {
 			}
 		}
 	}
-	/// Add history entry asyncronously, should resolve immediately unless sending too many history entries
-	pub async fn add_history_entry(&mut self, entry: String) -> Option<()> {
-		self.history_sender.send(entry).await.ok()
+	/// Add history entry asyncronously
+	pub fn add_history_entry(&mut self, entry: String) -> Option<()> {
+		self.history_sender.unbounded_send(entry).ok()
 	}
 }
 

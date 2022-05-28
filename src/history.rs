@@ -1,21 +1,21 @@
 use std::collections::VecDeque;
 
-use futures::channel::mpsc::{self, Receiver, Sender};
+use futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 pub struct History {
 	pub entries: VecDeque<String>,
 	pub max_size: usize,
-	pub sender: Sender<String>,
-	receiver: Receiver<String>,
+	pub sender: UnboundedSender<String>,
+	receiver: UnboundedReceiver<String>,
 
 	current_position: Option<usize>,
 }
 impl Default for History {
 	fn default() -> Self {
-		let (sender, receiver) = mpsc::channel(20);
+		let (sender, receiver) = mpsc::unbounded();
 		Self {
 			entries: Default::default(),
-			max_size: Default::default(),
+			max_size: 1000,
 			sender,
 			receiver,
 			current_position: Default::default(),
@@ -28,6 +28,8 @@ impl History {
 	pub async fn update(&mut self) {
 		// Receive all new lines
 		while let Ok(Some(line)) = self.receiver.try_next() {
+			// Don't add entry if last entry was same, or line was empty.
+			if self.entries.front() == Some(&line) || line.is_empty() { continue; }
 			// Add entry to front of history
 			self.entries.push_front(line);
 			// Reset offset to newest entry
