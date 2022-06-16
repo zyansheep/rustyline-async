@@ -163,15 +163,100 @@ impl LineState {
 		self.history.update().await;
 
 		match event {
-			// Regular Modifiers (None or Shift)
+			// Control Keys
 			Event::Key(KeyEvent {
 				code,
-				modifiers: KeyModifiers::NONE,
-			})
-			| Event::Key(KeyEvent {
-				code,
-				modifiers: KeyModifiers::SHIFT,
+				modifiers: KeyModifiers::CONTROL,
 			}) => match code {
+				// End of transmission (CTRL-D)
+				KeyCode::Char('d') => {
+					writeln!(term)?;
+					self.clear(term)?;
+					return Err(ReadlineError::Eof);
+				}
+				// End of text (CTRL-C)
+				KeyCode::Char('c') => {
+					self.print(&format!("{}{}", self.prompt, self.line), term)?;
+					self.line.clear();
+					self.move_cursor(-10000)?;
+					self.clear_and_render(term)?;
+					return Err(ReadlineError::Interrupted);
+				}
+				// Clear all
+				KeyCode::Char('l') => {
+					term.queue(Clear(All))?.queue(cursor::MoveTo(0, 0))?;
+					self.clear_and_render(term)?;
+				}
+				// Clear to start
+				KeyCode::Char('u') => {
+					if let Some((pos, str)) = self.current_grapheme() {
+						let pos = pos + str.len();
+						self.line.drain(0..pos);
+						self.move_cursor(-10000)?;
+						self.clear_and_render(term)?;
+					}
+				}
+				// Move to beginning
+				#[cfg(feature = "emacs")]
+				KeyCode::Char('a') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(-100000)?;
+					self.set_cursor(term)?;
+				}
+				// Move to end
+				#[cfg(feature = "emacs")]
+				KeyCode::Char('e') => {
+					self.reset_cursor(term)?;
+					self.move_cursor(100000)?;
+					self.set_cursor(term)?;
+				}
+				// Move cursor left to previous word
+				KeyCode::Left => {
+					self.reset_cursor(term)?;
+					let count = self.line.graphemes(true).count();
+					let skip_count = count - self.line_cursor_grapheme;
+					if let Some((pos, _)) = self
+						.line
+						.grapheme_indices(true)
+						.rev()
+						.skip(skip_count)
+						.skip_while(|(_, str)| *str == " ")
+						.find(|(_, str)| *str == " ")
+					{
+						let change = pos as isize - self.line_cursor_grapheme as isize;
+						self.move_cursor(change + 1)?;
+					} else {
+						self.move_cursor(-10000)?
+					}
+					self.set_cursor(term)?;
+				}
+				// Move cursor right to next word
+				KeyCode::Right => {
+					self.reset_cursor(term)?;
+					if let Some((pos, _)) = self
+						.line
+						.grapheme_indices(true)
+						.skip(self.line_cursor_grapheme)
+						.skip_while(|(_, c)| *c == " ")
+						.find(|(_, c)| *c == " ")
+					{
+						let change = pos as isize - self.line_cursor_grapheme as isize;
+						self.move_cursor(change)?;
+					} else {
+						self.move_cursor(10000)?;
+					};
+					self.set_cursor(term)?;
+				}
+				_ => {}
+			},
+			// Other Modifiers (None, Shift, Control+Alt)
+            // All other modifiers must be considered because the match expression cannot match
+            // combined KeyModifiers. Control+Alt is used to reach certain special symbols on a lot
+            // of international keyboard layouts.
+			Event::Key(KeyEvent {
+				code,
+				modifiers: _,
+            }) => match code {
 				KeyCode::Enter => {
 					self.clear(term)?;
 					let line = std::mem::take(&mut self.line);
@@ -256,92 +341,6 @@ impl LineState {
 						}
 					}
 					self.render(term)?;
-				}
-				_ => {}
-			},
-			// Control Keys
-			Event::Key(KeyEvent {
-				code,
-				modifiers: KeyModifiers::CONTROL,
-			}) => match code {
-				// End of transmission (CTRL-D)
-				KeyCode::Char('d') => {
-					writeln!(term)?;
-					self.clear(term)?;
-					return Err(ReadlineError::Eof);
-				}
-				// End of text (CTRL-C)
-				KeyCode::Char('c') => {
-					self.print(&format!("{}{}", self.prompt, self.line), term)?;
-					self.line.clear();
-					self.move_cursor(-10000)?;
-					self.clear_and_render(term)?;
-					return Err(ReadlineError::Interrupted);
-				}
-				// Clear all
-				KeyCode::Char('l') => {
-					term.queue(Clear(All))?.queue(cursor::MoveTo(0, 0))?;
-					self.clear_and_render(term)?;
-				}
-				// Clear to start
-				KeyCode::Char('u') => {
-					if let Some((pos, str)) = self.current_grapheme() {
-						let pos = pos + str.len();
-						self.line.drain(0..pos);
-						self.move_cursor(-10000)?;
-						self.clear_and_render(term)?;
-					}
-				}
-				// Move to beginning
-				#[cfg(feature = "emacs")]
-				KeyCode::Char('a') => {
-					self.reset_cursor(term)?;
-					self.move_cursor(-100000)?;
-					self.set_cursor(term)?;
-				}
-				// Move to end
-				#[cfg(feature = "emacs")]
-				KeyCode::Char('e') => {
-					self.reset_cursor(term)?;
-					self.move_cursor(100000)?;
-					self.set_cursor(term)?;
-				}
-				// Move cursor left to previous word
-				KeyCode::Left => {
-					self.reset_cursor(term)?;
-					let count = self.line.graphemes(true).count();
-					let skip_count = count - self.line_cursor_grapheme;
-					if let Some((pos, _)) = self
-						.line
-						.grapheme_indices(true)
-						.rev()
-						.skip(skip_count)
-						.skip_while(|(_, str)| *str == " ")
-						.find(|(_, str)| *str == " ")
-					{
-						let change = pos as isize - self.line_cursor_grapheme as isize;
-						self.move_cursor(change + 1)?;
-					} else {
-						self.move_cursor(-10000)?
-					}
-					self.set_cursor(term)?;
-				}
-				// Move cursor right to next word
-				KeyCode::Right => {
-					self.reset_cursor(term)?;
-					if let Some((pos, _)) = self
-						.line
-						.grapheme_indices(true)
-						.skip(self.line_cursor_grapheme)
-						.skip_while(|(_, c)| *c == " ")
-						.find(|(_, c)| *c == " ")
-					{
-						let change = pos as isize - self.line_cursor_grapheme as isize;
-						self.move_cursor(change)?;
-					} else {
-						self.move_cursor(10000)?;
-					};
-					self.set_cursor(term)?;
 				}
 				_ => {}
 			},
