@@ -611,18 +611,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "readline"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "futures",
- "log",
- "pin-project",
- "rustyline-async",
- "simplelog",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -635,9 +623,12 @@ dependencies = [
 name = "rustyline-async"
 version = "0.2.4"
 dependencies = [
+ "async-std",
  "crossterm",
  "futures",
+ "log",
  "pin-project",
+ "simplelog",
  "thingbuf",
  "thiserror",
  "unicode-segmentation",
@@ -731,16 +722,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bab24d30b911b2376f3a13cc2cd443142f0c81dda04c118693e35b3835757755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "test-printing"
-version = "0.1.0"
-dependencies = [
- "async-std",
- "log",
- "rustyline-async",
- "simplelog",
 ]
 
 [[package]]
