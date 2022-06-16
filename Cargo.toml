@@ -1,7 +1,8 @@
 [package]
 name = "rustyline-async"
 version = "0.2.4"
-license = "MIT OR Apache-2.0"
+license = "Unlicense"
+license-file = "UNLICENSE"
 description = "A minimal readline with multiline and async support."
 documentation = "https://docs.rs/rustyline-async"
 repository = "https://github.com/zyansheep/rustyline-async"
