@@ -28,3 +28,6 @@ cargo run --package readline
 ```
 
 ![rustyline-async](https://i.imgur.com/Ei2bzgu.gif)
+
+## License
+This software is dual licensed under the MIT and Apache 2.0 license.
