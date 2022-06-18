@@ -29,7 +29,9 @@ impl History {
 		// Receive all new lines
 		while let Ok(Some(line)) = self.receiver.try_next() {
 			// Don't add entry if last entry was same, or line was empty.
-			if self.entries.front() == Some(&line) || line.is_empty() { continue; }
+			if self.entries.front() == Some(&line) || line.is_empty() {
+				continue;
+			}
 			// Add entry to front of history
 			self.entries.push_front(line);
 			// Reset offset to newest entry

@@ -1,8 +1,7 @@
 [package]
 name = "rustyline-async"
-version = "0.2.4"
+version = "0.2.5"
 license = "Unlicense"
-license-file = "UNLICENSE"
 description = "A minimal readline with multiline and async support."
 documentation = "https://docs.rs/rustyline-async"
 repository = "https://github.com/zyansheep/rustyline-async"
@@ -20,8 +19,8 @@ unicode-width = "0.1.9"
 
 [dev-dependencies]
 async-std = { version = "1.11.0", features = [ "unstable", "attributes" ] }
-log = "0.4.16"
-simplelog = "0.11.2"
+log = "0.4.17"
+simplelog = "0.12.0"
 
 [features]
 default = ["emacs"]
