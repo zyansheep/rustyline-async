@@ -24,7 +24,7 @@ Feel free to PR to add more features!
 
 ## Example:
 ```
-cargo run --package readline
+cargo run --example readline
 ```
 
 ![rustyline-async](https://i.imgur.com/Ei2bzgu.gif)
