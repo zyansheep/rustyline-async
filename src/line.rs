@@ -51,16 +51,20 @@ impl LineState {
 	fn move_to_beginning(&self, term: &mut impl Write, from: u16) -> io::Result<()> {
 		let move_up = self.line_height(from.saturating_sub(1));
 		term.queue(cursor::MoveToColumn(0))?;
-		if move_up != 0 { term.queue(cursor::MoveUp(move_up))?; }
+		if move_up != 0 {
+			term.queue(cursor::MoveUp(move_up))?;
+		}
 		Ok(())
 	}
 	/// Move from the start of the line to some position
 	fn move_from_beginning(&self, term: &mut impl Write, to: u16) -> io::Result<()> {
 		let line_height = self.line_height(to.saturating_sub(1));
 		let line_remaining_len = to % self.term_size.0; // Get the remaining length
-		if line_height != 0 { term.queue(cursor::MoveDown(line_height))?; }
+		if line_height != 0 {
+			term.queue(cursor::MoveDown(line_height))?;
+		}
 		term.queue(cursor::MoveRight(line_remaining_len))?;
-		
+
 		Ok(())
 	}
 	/// Move cursor by one unicode grapheme either left (negative) or right (positive)
