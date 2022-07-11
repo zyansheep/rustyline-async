@@ -50,18 +50,20 @@ impl LineState {
 	/// Move from a position on the line to the start
 	fn move_to_beginning(&self, term: &mut impl Write, from: u16) -> io::Result<()> {
 		let move_up = self.line_height(from.saturating_sub(1));
-		term.queue(cursor::MoveToColumn(1))?
-			.queue(cursor::MoveUp(move_up))?;
+		term.queue(cursor::MoveToColumn(0))?;
+		if move_up != 0 { term.queue(cursor::MoveUp(move_up))?; }
 		Ok(())
 	}
 	/// Move from the start of the line to some position
 	fn move_from_beginning(&self, term: &mut impl Write, to: u16) -> io::Result<()> {
 		let line_height = self.line_height(to.saturating_sub(1));
 		let line_remaining_len = to % self.term_size.0; // Get the remaining length
-		term.queue(cursor::MoveDown(line_height))?
-			.queue(cursor::MoveRight(line_remaining_len))?;
+		if line_height != 0 { term.queue(cursor::MoveDown(line_height))?; }
+		term.queue(cursor::MoveRight(line_remaining_len))?;
+		
 		Ok(())
 	}
+	/// Move cursor by one unicode grapheme either left (negative) or right (positive)
 	fn move_cursor(&mut self, change: isize) -> io::Result<()> {
 		// self.reset_cursor(term)?;
 		if change > 0 {
@@ -119,14 +121,14 @@ impl LineState {
 		// If last written data was not newline, restore the cursor
 		if !self.last_line_completed {
 			term.queue(cursor::MoveUp(1))?
-				.queue(cursor::MoveToColumn(1))?
+				.queue(cursor::MoveToColumn(0))?
 				.queue(cursor::MoveRight(self.last_line_length as u16))?;
 		}
 
 		// Write data in a way that newlines also act as carriage returns
 		for line in data.split_inclusive(|b| *b == b'\n') {
 			term.write_all(line)?;
-			term.queue(cursor::MoveToColumn(1))?;
+			term.queue(cursor::MoveToColumn(0))?;
 		}
 
 		self.last_line_completed = data.ends_with(b"\n"); // Set whether data ends with newline
@@ -145,7 +147,7 @@ impl LineState {
 			self.last_line_length = 0;
 		}
 
-		term.queue(cursor::MoveToColumn(1))?;
+		term.queue(cursor::MoveToColumn(0))?;
 
 		self.render(term)?;
 		Ok(())
@@ -192,7 +194,7 @@ impl LineState {
 					if let Some((pos, str)) = self.current_grapheme() {
 						let pos = pos + str.len();
 						self.line.drain(0..pos);
-						self.move_cursor(-10000)?;
+						self.move_cursor(-100000)?;
 						self.clear_and_render(term)?;
 					}
 				}
@@ -226,7 +228,7 @@ impl LineState {
 						let change = pos as isize - self.line_cursor_grapheme as isize;
 						self.move_cursor(change + 1)?;
 					} else {
-						self.move_cursor(-10000)?
+						self.move_cursor(-100000)?
 					}
 					self.set_cursor(term)?;
 				}
