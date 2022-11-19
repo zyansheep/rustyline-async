@@ -62,15 +62,20 @@ its pretty cool
 						_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
 					}
 				},
-				Err(ReadlineError::Eof) =>{ writeln!(stdout, "Exiting...")?; break },
+				Err(ReadlineError::Eof) => { writeln!(stdout, "Exiting...")?; break },
 				Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
+				// Err(ReadlineError::Closed) => break, // Readline was closed via one way or another, cleanup other futures here and break out of the loop
 				Err(err) => {
 					writeln!(stdout, "Received err: {:?}", err)?;
 					writeln!(stdout, "Exiting...")?;
-					break;
+					break
 				},
 			}
 		}
 	}
+
+	// Flush all writers to stdout
+	rl.flush()?;
+
 	Ok(())
 }
