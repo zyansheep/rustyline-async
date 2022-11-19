@@ -152,10 +152,16 @@ impl Readline {
 		self.line.history.max_size = max_size;
 		self.line.history.entries.truncate(max_size);
 	}
-	/// Flush terminal
-	pub fn flush(&mut self) -> io::Result<()> {
-		self.raw_term.flush()
+	/// Flush all writers to terminal
+	pub fn flush(&mut self) -> Result<(), ReadlineError> {
+		while let Ok(buf) = self.line_receiver.try_recv_ref() {
+			self.line.print_data(&buf, &mut self.raw_term)?;
+			self.line.clear(&mut self.raw_term)?;
+		}
+		self.raw_term.flush()?;
+		Ok(())
 	}
+
 	/// Polling function for readline, manages all input and output.
 	pub async fn readline(&mut self) -> Result<String, ReadlineError> {
 		loop {

@@ -100,7 +100,7 @@ impl LineState {
 		self.move_from_beginning(term, self.current_column as u16)
 	}
 	/// Clear current line
-	fn clear(&self, term: &mut impl Write) -> io::Result<()> {
+	pub fn clear(&self, term: &mut impl Write) -> io::Result<()> {
 		self.move_to_beginning(term, self.current_column as u16)?;
 		term.queue(Clear(FromCursorDown))?;
 		Ok(())
