@@ -9,12 +9,12 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-crossterm = { version = "0.24", features = ["event-stream"] }
+crossterm = { version = "0.25", features = ["event-stream"] }
 futures = "0.3"
 pin-project = "1.0"
 thingbuf = "0.1"
 thiserror = "1.0"
-unicode-segmentation = "1.9"
+unicode-segmentation = "1.10"
 unicode-width = "0.1"
 
 [dev-dependencies]

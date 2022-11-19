@@ -173,6 +173,7 @@ impl LineState {
 			Event::Key(KeyEvent {
 				code,
 				modifiers: KeyModifiers::CONTROL,
+				..
 			}) => match code {
 				// End of transmission (CTRL-D)
 				KeyCode::Char('d') => {
@@ -259,7 +260,9 @@ impl LineState {
 			// All other modifiers must be considered because the match expression cannot match
 			// combined KeyModifiers. Control+Alt is used to reach certain special symbols on a lot
 			// of international keyboard layouts.
-			Event::Key(KeyEvent { code, modifiers: _ }) => match code {
+			Event::Key(KeyEvent {
+				code, modifiers: _, ..
+			}) => match code {
 				KeyCode::Enter => {
 					self.clear(term)?;
 					let line = std::mem::take(&mut self.line);
