@@ -265,10 +265,18 @@ impl LineState {
 			}) => match code {
 				KeyCode::Enter => {
 					self.clear(term)?;
+
+					// Print line so you can see what commands you've typed
+					self.print(&format!("{}{}\n", self.prompt, self.line), term)?;
+					
+					// Take line
 					let line = std::mem::take(&mut self.line);
+					
+					// Render new line from beginning
 					self.move_cursor(-100000)?;
 					self.render(term)?;
 
+					// Return line
 					return Ok(Some(line));
 				}
 				// Delete character from line
