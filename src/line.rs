@@ -69,11 +69,10 @@ impl LineState {
 	}
 	/// Move cursor by one unicode grapheme either left (negative) or right (positive)
 	fn move_cursor(&mut self, change: isize) -> io::Result<()> {
-		// self.reset_cursor(term)?;
 		if change > 0 {
 			let count = self.line.graphemes(true).count();
 			self.line_cursor_grapheme =
-				usize::min(self.line_cursor_grapheme as usize + change as usize, count);
+				usize::min(self.line_cursor_grapheme + change as usize, count);
 		} else {
 			self.line_cursor_grapheme =
 				self.line_cursor_grapheme.saturating_sub((-change) as usize);
@@ -82,8 +81,6 @@ impl LineState {
 		let pos = pos + str.len();
 		self.current_column =
 			(self.prompt.len() + UnicodeWidthStr::width(&self.line[0..pos])) as u16;
-
-		// self.set_cursor(term)?;
 
 		Ok(())
 	}
@@ -97,11 +94,11 @@ impl LineState {
 		self.move_to_beginning(term, self.current_column)
 	}
 	fn set_cursor(&self, term: &mut impl Write) -> io::Result<()> {
-		self.move_from_beginning(term, self.current_column as u16)
+		self.move_from_beginning(term, self.current_column)
 	}
 	/// Clear current line
 	pub fn clear(&self, term: &mut impl Write) -> io::Result<()> {
-		self.move_to_beginning(term, self.current_column as u16)?;
+		self.move_to_beginning(term, self.current_column)?;
 		term.queue(Clear(FromCursorDown))?;
 		Ok(())
 	}
@@ -268,10 +265,10 @@ impl LineState {
 
 					// Print line so you can see what commands you've typed
 					self.print(&format!("{}{}\n", self.prompt, self.line), term)?;
-					
+
 					// Take line
 					let line = std::mem::take(&mut self.line);
-					
+
 					// Render new line from beginning
 					self.move_cursor(-100000)?;
 					self.render(term)?;
