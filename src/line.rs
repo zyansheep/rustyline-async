@@ -24,6 +24,9 @@ pub struct LineState {
 	cluster_buffer: String, // buffer for holding partial grapheme clusters as they come in
 
 	prompt: String,
+	pub should_print_line_on_enter: bool, // After pressing enter, should we print the line just submitted?
+	pub should_print_line_on_control_c: bool, // After pressing control_c should we print the line just cancelled?
+
 	last_line_length: usize,
 	last_line_completed: bool,
 
@@ -40,6 +43,8 @@ impl LineState {
 			last_line_completed: true,
 			term_size,
 			current_column,
+			should_print_line_on_enter: true,
+			should_print_line_on_control_c: true,
 
 			..Default::default()
 		}
@@ -180,7 +185,10 @@ impl LineState {
 				}
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
-					self.print(&format!("{}{}", self.prompt, self.line), term)?;
+					if self.should_print_line_on_control_c {
+						self.print(&format!("{}{}", self.prompt, self.line), term)?;
+					}
+
 					self.line.clear();
 					self.move_cursor(-10000)?;
 					self.clear_and_render(term)?;
@@ -264,7 +272,9 @@ impl LineState {
 					self.clear(term)?;
 
 					// Print line so you can see what commands you've typed
-					self.print(&format!("{}{}\n", self.prompt, self.line), term)?;
+					if self.should_print_line_on_enter {
+						self.print(&format!("{}{}\n", self.prompt, self.line), term)?;
+					}
 
 					// Take line
 					let line = std::mem::take(&mut self.line);

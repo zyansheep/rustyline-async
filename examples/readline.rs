@@ -11,6 +11,8 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut periodic_timer2 = stream::interval(Duration::from_secs(3));
 
 	let (mut rl, mut stdout) = Readline::new("> ".to_owned()).unwrap();
+	// Options:
+	// rl.should_print_line_on(false, false);
 	// rl.set_max_history(10);
 
 	simplelog::WriteLogger::init(
@@ -51,6 +53,12 @@ async fn main() -> Result<(), ReadlineError> {
 						"stop logging" => {
 							log::info!("Stopping the logger...");
 							running_second = false
+						},
+						"start printouts" => {
+							rl.should_print_line_on(true, true);
+						},
+						"stop printouts" => {
+							rl.should_print_line_on(false, false);
 						},
 						"info" => {
 							writeln!(stdout, r"

@@ -152,6 +152,11 @@ impl Readline {
 		self.line.history.max_size = max_size;
 		self.line.history.entries.truncate(max_size);
 	}
+	pub fn should_print_line_on(&mut self, enter: bool, control_c: bool) {
+		self.line.should_print_line_on_enter = enter;
+		self.line.should_print_line_on_control_c = control_c;
+	}
+
 	/// Flush all writers to terminal
 	pub fn flush(&mut self) -> Result<(), ReadlineError> {
 		while let Ok(buf) = self.line_receiver.try_recv_ref() {
