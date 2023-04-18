@@ -152,6 +152,19 @@ impl Readline {
 		self.line.history.max_size = max_size;
 		self.line.history.entries.truncate(max_size);
 	}
+
+	/// Set whether the input line should remain on the screen after
+	/// events.
+	///
+	/// If `enter` is true, then when the user presses "Enter", the prompt
+	/// and the text they entered will remain on the screen, and the cursor
+	/// will move to the next line.  If `enter` is false, the prompt &
+	/// input will be erased instead.
+	///
+	/// `control_c` similarly controls the behavior for when the user
+	/// presses Ctrl-C.
+	///
+	/// The default value for both settings is `true`.
 	pub fn should_print_line_on(&mut self, enter: bool, control_c: bool) {
 		self.line.should_print_line_on_enter = enter;
 		self.line.should_print_line_on_control_c = control_c;
