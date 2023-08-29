@@ -188,7 +188,10 @@ impl Readline {
 					Some(Ok(event)) => {
 						match self.line.handle_event(event, &mut self.raw_term).await {
 							Ok(Some(line)) => return Result::<_, ReadlineError>::Ok(line),
-							Err(e) => return Err(e),
+							Err(e) => {
+								self.raw_term.flush()?;
+								return Err(e)
+							},
 							Ok(None) => self.raw_term.flush()?,
 						}
 					}
