@@ -218,6 +218,32 @@ impl LineState {
 						self.clear_and_render(term)?;
 					}
 				}
+				// Clear last word
+				KeyCode::Char('w') => {
+					let count = self.line.graphemes(true).count();
+					let skip_count = count - self.line_cursor_grapheme;
+					let start = self
+						.line
+						.grapheme_indices(true)
+						.rev()
+						.skip(skip_count)
+						.skip_while(|(_, str)| *str == " ")
+						.find_map(|(pos, str)| if str == " " { Some(pos + 1) } else { None })
+						.unwrap_or(0);
+					let end = self
+						.line
+						.grapheme_indices(true)
+						.nth(self.line_cursor_grapheme)
+						.map(|(end, _)| end);
+					let change = start as isize - self.line_cursor_grapheme as isize;
+					self.move_cursor(change)?;
+					if let Some(end) = end {
+						self.line.drain(start..end);
+					} else {
+						self.line.drain(start..);
+					}
+					self.clear_and_render(term)?;
+				}
 				// Move to beginning
 				#[cfg(feature = "emacs")]
 				KeyCode::Char('a') => {
