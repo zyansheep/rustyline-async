@@ -95,6 +95,16 @@ impl LineState {
 			.take(self.line_cursor_grapheme)
 			.last()
 	}
+	fn next_grapheme(&self) -> Option<(usize, &str)> {
+		let total = self.line.grapheme_indices(true).count();
+		if self.line_cursor_grapheme == total {
+			return None;
+		}
+		self.line
+			.grapheme_indices(true)
+			.take(self.line_cursor_grapheme + 1)
+			.last()
+	}
 	fn reset_cursor(&self, term: &mut impl Write) -> io::Result<()> {
 		self.move_to_beginning(term, self.current_column)
 	}
@@ -294,6 +304,16 @@ impl LineState {
 						let len = pos + str.len();
 						self.line.replace_range(pos..len, "");
 						self.move_cursor(-1)?;
+
+						self.render(term)?;
+					}
+				}
+				KeyCode::Delete => {
+					if let Some((pos, str)) = self.next_grapheme() {
+						self.clear(term)?;
+
+						let len = pos + str.len();
+						self.line.replace_range(pos..len, "");
 
 						self.render(term)?;
 					}
