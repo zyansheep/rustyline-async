@@ -185,6 +185,7 @@ impl Readline {
 	}
 
 	/// Polling function for readline, manages all input and output.
+	/// Returns either an Readline Event or an Error
 	pub async fn readline(&mut self) -> Result<ReadlineEvent, ReadlineError> {
 		loop {
 			futures::select! {
