@@ -1,6 +1,6 @@
 [package]
 name = "rustyline-async"
-version = "0.3.1"
+version = "0.3.3"
 license = "Unlicense"
 description = "A minimal readline with multiline and async support."
 documentation = "https://docs.rs/rustyline-async"

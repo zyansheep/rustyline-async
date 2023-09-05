@@ -18,6 +18,7 @@ Inspired by `rustyline` , `async-readline` & `termion-async-input`. Built using 
  * Ctrl-left & right to move to next or previous whitespace
  * Home/Ctrl-A and End/Ctrl-E to jump to the start and end of the input (Ctrl-A & Ctrl-E can be toggled off with feature)
  * Ctrl-L clear screen
+ * Ctrl-W delete until previous space
  * Extensible design based on `crossterm`'s `event-stream` feature
 
 Feel free to PR to add more features!
