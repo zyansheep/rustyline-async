@@ -1,5 +1,5 @@
 use async_std::stream;
-use rustyline_async::{Readline, ReadlineError};
+use rustyline_async::{Readline, ReadlineEvent, ReadlineError};
 
 use std::{io::Write, time::Duration};
 
@@ -34,7 +34,7 @@ async fn main() -> Result<(), ReadlineError> {
 				if running_second { log::info!("Second timer went off!"); }
 			}
 			command = rl.readline().fuse() => match command {
-				Ok(line) => {
+				Ok(ReadlineEvent::Line(line)) => {
 					let line = line.trim();
 					rl.add_history_entry(line.to_owned());
 					match line {
@@ -70,8 +70,8 @@ its pretty cool
 						_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
 					}
 				},
-				Err(ReadlineError::Eof) => { writeln!(stdout, "Exiting...")?; break },
-				Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
+				Ok(ReadlineEvent::Eof) => { writeln!(stdout, "Exiting...")?; break },
+				Ok(ReadlineEvent::Interrupted) => writeln!(stdout, "^C")?,
 				// Err(ReadlineError::Closed) => break, // Readline was closed via one way or another, cleanup other futures here and break out of the loop
 				Err(err) => {
 					writeln!(stdout, "Received err: {:?}", err)?;

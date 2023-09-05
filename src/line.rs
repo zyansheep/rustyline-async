@@ -10,7 +10,7 @@ use crossterm::{
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{History, ReadlineError};
+use crate::{History, ReadlineError, ReadlineEvent};
 
 #[derive(Default)]
 pub struct LineState {
@@ -176,7 +176,7 @@ impl LineState {
 		&mut self,
 		event: Event,
 		term: &mut impl Write,
-	) -> Result<Option<String>, ReadlineError> {
+	) -> Result<Option<ReadlineEvent>, ReadlineError> {
 		// Update history entries
 		self.history.update().await;
 
@@ -191,7 +191,7 @@ impl LineState {
 				KeyCode::Char('d') => {
 					writeln!(term)?;
 					self.clear(term)?;
-					return Err(ReadlineError::Eof);
+					return Ok(Some(ReadlineEvent::Eof));
 				}
 				// End of text (CTRL-C)
 				KeyCode::Char('c') => {
@@ -202,7 +202,7 @@ impl LineState {
 					self.line.clear();
 					self.move_cursor(-10000)?;
 					self.clear_and_render(term)?;
-					return Err(ReadlineError::Interrupted);
+					return Ok(Some(ReadlineEvent::Interrupted));
 				}
 				// Clear all
 				KeyCode::Char('l') => {
@@ -320,7 +320,7 @@ impl LineState {
 					self.render(term)?;
 
 					// Return line
-					return Ok(Some(line));
+					return Ok(Some(ReadlineEvent::Line(line)));
 				}
 				// Delete character from line
 				KeyCode::Backspace => {

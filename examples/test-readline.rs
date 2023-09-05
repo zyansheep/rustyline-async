@@ -1,10 +1,10 @@
-use rustyline_async::{Readline, ReadlineError};
+use rustyline_async::{Readline, ReadlineEvent};
 use std::io::Write;
 use std::time::Duration;
 use tokio::time::sleep;
 
 #[tokio::main]
-async fn main() -> Result<(), ReadlineError> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut rl, mut stdout) = Readline::new("prompt> ".into())?;
     loop {
         tokio::select! {
@@ -12,18 +12,18 @@ async fn main() -> Result<(), ReadlineError> {
                 writeln!(stdout, "Message received!")?;
             }
             cmd = rl.readline() => match cmd {
-                Ok(line) => {
+                Ok(ReadlineEvent::Line(line)) => {
                     writeln!(stdout, "You entered: {line:?}")?;
                     rl.add_history_entry(line.clone());
                     if line == "quit" {
                         break;
                     }
                 }
-                Err(ReadlineError::Eof) => {
+                Ok(ReadlineEvent::Eof) => {
                     writeln!(stdout, "<EOF>")?;
                     break;
                 }
-                Err(ReadlineError::Interrupted) => {writeln!(stdout, "^C")?; continue; }
+                Ok(ReadlineEvent::Interrupted) => {writeln!(stdout, "^C")?; continue; }
                 Err(e) => {
                     writeln!(stdout, "Error: {e:?}")?;
                     break;

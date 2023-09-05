@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use rustyline_async::{Readline, ReadlineError};
+use rustyline_async::{Readline, ReadlineEvent};
 
 #[derive(Debug)]
 struct BigStruct {
@@ -12,7 +12,7 @@ struct BigStruct {
 }
 
 #[async_std::main]
-async fn main() -> Result<(), ReadlineError> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let (mut rl, mut stdout) = Readline::new("> ".to_owned()).unwrap();
 
 	let thingy = BigStruct {
@@ -30,15 +30,15 @@ async fn main() -> Result<(), ReadlineError> {
 
 	loop {
 		match rl.readline().await {
-			Ok(_) => {
+			Ok(ReadlineEvent::Line(_)) => {
 				writeln!(stdout, "{:?}", thingy)?;
 				log::info!("{:?}", thingy);
 			}
-			Err(ReadlineError::Eof) => {
+			Ok(ReadlineEvent::Eof) => {
 				writeln!(stdout, "Exiting...")?;
 				break;
 			}
-			Err(ReadlineError::Interrupted) => writeln!(stdout, "^C")?,
+			Ok(ReadlineEvent::Interrupted) => writeln!(stdout, "^C")?,
 			Err(err) => {
 				writeln!(stdout, "Received err: {:?}", err)?;
 				break;
