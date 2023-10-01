@@ -305,8 +305,6 @@ impl LineState {
 				code, modifiers: _, ..
 			}) => match code {
 				KeyCode::Enter => {
-					self.clear(term)?;
-
 					// Print line so you can see what commands you've typed
 					if self.should_print_line_on_enter {
 						self.print(&format!("{}{}\n", self.prompt, self.line), term)?;
@@ -317,7 +315,7 @@ impl LineState {
 
 					// Render new line from beginning
 					self.move_cursor(-100000)?;
-					self.render(term)?;
+					self.clear_and_render(term)?;
 
 					// Return line
 					return Ok(Some(ReadlineEvent::Line(line)));
