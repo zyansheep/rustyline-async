@@ -174,12 +174,12 @@ impl Readline {
 		self.line.should_print_line_on_control_c = control_c;
 	}
 
-	/// Flush all writers to terminal
+	/// Flush all writers to terminal and erase the prompt string
 	pub fn flush(&mut self) -> Result<(), ReadlineError> {
 		while let Ok(buf) = self.line_receiver.try_recv_ref() {
 			self.line.print_data(&buf, &mut self.raw_term)?;
-			self.line.clear(&mut self.raw_term)?;
 		}
+		self.line.clear(&mut self.raw_term)?;
 		self.raw_term.flush()?;
 		Ok(())
 	}
