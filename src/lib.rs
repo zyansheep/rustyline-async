@@ -22,7 +22,7 @@ use line::LineState;
 /// Error returned from `readline()`. These generally require specific processes to recover from.
 #[derive(Debug, Error)]
 pub enum ReadlineError {
-	#[error("io: {0}")]
+	#[error(transparent)]
 	IO(#[from] io::Error),
 	#[error("line writers closed")]
 	Closed,
