@@ -1,3 +1,47 @@
+//! The `rustyline-async` library lets you read user input from the terminal
+//! line by line while concurrently writing lines to the same terminal.
+//!
+//! Usage
+//! =====
+//!
+//! - Call [`Readline::new()`] to create a [`Readline`] instance and associated
+//!   [`SharedWriter`].
+//!
+//! - Call [`Readline::readline()`] (most likely in a loop) to receive a line
+//!   of input from the terminal.  The user entering the line can edit their
+//!   input using the key bindings listed under "Input Editing" below.
+//!
+//! - After receiving a line from the user, if you wish to add it to the
+//!   history (so that the user can retrieve it while editing a later line),
+//!   call [`Readline::add_history_entry()`].
+//!
+//! - Lines written to the associated `SharedWriter` while `readline()` is in
+//!   progress will be output to the screen above the input line.
+//!
+//! - When done, call [`Readline::flush()`] to ensure that all lines written to
+//!   the `SharedWriter` are output.
+//!
+//! Input Editing
+//! =============
+//!
+//! While entering text, the user can edit and navigate through the current
+//! input line with the following key bindings:
+//!
+//! - Left, Right: Move cursor left/right
+//! - Up, Down: Scroll through input history
+//! - Ctrl-W: Erase the input from the cursor to the previous whitespace
+//! - Ctrl-U: Erase the input before the cursor
+//! - Ctrl-L: Clear the screen
+//! - Ctrl-Left / Ctrl-Right: Move to previous/next whitespace
+//! - Home: Jump to the start of the line
+//!     - When the "emacs" feature (on by default) is enabled, Ctrl-A has the
+//!       same effect.
+//! - End: Jump to the end of the line
+//!     - When the "emacs" feature (on by default) is enabled, Ctrl-E has the
+//!       same effect.
+//! - Ctrl-D: Send an `Eof` event
+//! - Ctrl-C: Send an `Interrupt` event
+
 use std::{
 	io::{self, stdout, Stdout, Write},
 	ops::DerefMut,
