@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crossterm::{
 	cursor,
-	event::{Event, KeyCode, KeyEvent, KeyModifiers},
+	event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
 	terminal::{Clear, ClearType::*},
 	QueueableCommand,
 };
@@ -185,6 +185,7 @@ impl LineState {
 			Event::Key(KeyEvent {
 				code,
 				modifiers: KeyModifiers::CONTROL,
+				kind: KeyEventKind::Press,
 				..
 			}) => match code {
 				// End of transmission (CTRL-D)
@@ -302,7 +303,10 @@ impl LineState {
 			// combined KeyModifiers. Control+Alt is used to reach certain special symbols on a lot
 			// of international keyboard layouts.
 			Event::Key(KeyEvent {
-				code, modifiers: _, ..
+				code,
+				modifiers: _,
+				kind: KeyEventKind::Press,
+				..
 			}) => match code {
 				KeyCode::Enter => {
 					// Print line so you can see what commands you've typed
