@@ -68,7 +68,7 @@ use line::LineState;
 #[derive(Debug, Error)]
 pub enum ReadlineError {
 	/// An internal I/O error occurred
-	#[error("io: {0}")]
+	#[error(transparent)]
 	IO(#[from] io::Error),
 
 	/// `readline()` was called after the [`SharedWriter`] was dropped and
