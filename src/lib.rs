@@ -54,7 +54,8 @@ use crossterm::{
 	terminal::{self, disable_raw_mode},
 	QueueableCommand,
 };
-use futures::{channel::mpsc, prelude::*};
+use futures_channel::mpsc;
+use futures_util::{pin_mut, ready, select, AsyncWrite, FutureExt, StreamExt};
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
 
@@ -122,8 +123,8 @@ impl AsyncWrite for SharedWriter {
 		this.buffer.extend_from_slice(buf);
 		if this.buffer.ends_with(b"\n") {
 			let fut = this.sender.send_ref();
-			futures::pin_mut!(fut);
-			let mut send_buf = futures::ready!(fut.poll_unpin(cx)).map_err(|_| {
+			pin_mut!(fut);
+			let mut send_buf = ready!(fut.poll_unpin(cx)).map_err(|_| {
 				io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed")
 			})?;
 			// Swap buffers
@@ -137,8 +138,8 @@ impl AsyncWrite for SharedWriter {
 	fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
 		let mut this = self.project();
 		let fut = this.sender.send_ref();
-		futures::pin_mut!(fut);
-		let mut send_buf = futures::ready!(fut.poll_unpin(cx))
+		pin_mut!(fut);
+		let mut send_buf = ready!(fut.poll_unpin(cx))
 			.map_err(|_| io::Error::new(io::ErrorKind::Other, "thingbuf receiver has closed"))?;
 		// Swap buffers
 		std::mem::swap(send_buf.deref_mut(), &mut this.buffer);
@@ -260,7 +261,7 @@ impl Readline {
 	/// Returns either an Readline Event or an Error
 	pub async fn readline(&mut self) -> Result<ReadlineEvent, ReadlineError> {
 		loop {
-			futures::select! {
+			select! {
 				event = self.event_stream.next().fuse() => match event {
 					Some(Ok(event)) => {
 						match self.line.handle_event(event, &mut self.raw_term).await {
