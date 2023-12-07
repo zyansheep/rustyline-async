@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use futures::channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 pub struct History {
 	pub entries: VecDeque<String>,
