@@ -1,9 +1,9 @@
 use async_std::stream;
-use rustyline_async::{Readline, ReadlineEvent, ReadlineError};
+use rustyline_async::{Readline, ReadlineError, ReadlineEvent};
 
 use std::{io::Write, time::Duration};
 
-use futures::prelude::*;
+use futures_util::{select, FutureExt, StreamExt};
 
 #[async_std::main]
 async fn main() -> Result<(), ReadlineError> {
@@ -26,7 +26,7 @@ async fn main() -> Result<(), ReadlineError> {
 	let mut running_second = false;
 
 	loop {
-		futures::select! {
+		select! {
 			_ = periodic_timer1.next().fuse() => {
 				if running_first { writeln!(stdout, "First timer went off!")?; }
 			}
