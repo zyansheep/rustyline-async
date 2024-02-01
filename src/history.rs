@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use futures_util::StreamExt;
 
 pub struct History {
 	pub entries: VecDeque<String>,
@@ -27,7 +28,7 @@ impl History {
 	// Update history entries
 	pub async fn update(&mut self) {
 		// Receive all new lines
-		while let Ok(Some(line)) = self.receiver.try_next() {
+		while let Some(line) = self.receiver.next().await {
 			// Don't add entry if last entry was same, or line was empty.
 			if self.entries.front() == Some(&line) || line.is_empty() {
 				continue;

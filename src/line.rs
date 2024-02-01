@@ -1,10 +1,7 @@
 use std::io::{self, Write};
 
 use crossterm::{
-	cursor,
-	event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-	terminal::{Clear, ClearType::*},
-	QueueableCommand,
+	cursor, event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, terminal::{Clear, ClearType::*}, ExecutableCommand, QueueableCommand
 };
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -23,7 +20,7 @@ pub struct LineState {
 
 	cluster_buffer: String, // buffer for holding partial grapheme clusters as they come in
 
-	pub(crate) prompt: String,
+	prompt: String,
 	pub should_print_line_on_enter: bool, // After pressing enter, should we print the line just submitted?
 	pub should_print_line_on_control_c: bool, // After pressing control_c should we print the line just cancelled?
 
@@ -170,6 +167,15 @@ impl LineState {
 	}
 	pub fn print(&mut self, string: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.print_data(string.as_bytes(), term)?;
+		Ok(())
+	}
+	pub fn update_prompt(&mut self, prompt: String, term: &mut impl Write) -> Result<(), ReadlineError> {
+		self.clear(term)?;
+		self.prompt = prompt;
+		// recalculates column
+		self.move_cursor(0)?;
+		self.render(term)?;
+		term.flush()?;
 		Ok(())
 	}
 	pub async fn handle_event(
