@@ -224,9 +224,11 @@ impl Readline {
 		))
 	}
 
+	/// Clear the screen
 	pub fn clear(&mut self) -> Result<(), ReadlineError> {
 		self.raw_term.queue(Clear(terminal::ClearType::All))?;
 		self.line.clear_and_render(&mut self.raw_term)?;
+		self.raw_term.flush()?;
 		Ok(())
 	}
 
