@@ -23,7 +23,7 @@ pub struct LineState {
 
 	cluster_buffer: String, // buffer for holding partial grapheme clusters as they come in
 
-	prompt: String,
+	pub(crate) prompt: String,
 	pub should_print_line_on_enter: bool, // After pressing enter, should we print the line just submitted?
 	pub should_print_line_on_control_c: bool, // After pressing control_c should we print the line just cancelled?
 
