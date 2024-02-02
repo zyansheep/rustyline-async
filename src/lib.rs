@@ -278,7 +278,7 @@ impl Readline {
 			select! {
 				event = self.event_stream.next().fuse() => match event {
 					Some(Ok(event)) => {
-						match self.line.handle_event(event, &mut self.raw_term).await {
+						match self.line.handle_event(event, &mut self.raw_term) {
 							Ok(Some(event)) => {
 								self.raw_term.flush()?;
 								return Result::<_, ReadlineError>::Ok(event)
@@ -296,7 +296,8 @@ impl Readline {
 						self.raw_term.flush()?;
 					},
 					None => return Err(ReadlineError::Closed),
-				}
+				},
+				_ = self.line.history.update().fuse() => {}
 			}
 		}
 	}

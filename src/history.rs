@@ -27,11 +27,11 @@ impl Default for History {
 impl History {
 	// Update history entries
 	pub async fn update(&mut self) {
-		// Receive all new lines
-		while let Some(line) = self.receiver.next().await {
+		// Receive a new line
+		if let Some(line) = self.receiver.next().await {
 			// Don't add entry if last entry was same, or line was empty.
 			if self.entries.front() == Some(&line) || line.is_empty() {
-				continue;
+				return;
 			}
 			// Add entry to front of history
 			self.entries.push_front(line);

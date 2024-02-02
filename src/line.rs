@@ -178,14 +178,11 @@ impl LineState {
 		term.flush()?;
 		Ok(())
 	}
-	pub async fn handle_event(
+	pub fn handle_event(
 		&mut self,
 		event: Event,
 		term: &mut impl Write,
 	) -> Result<Option<ReadlineEvent>, ReadlineError> {
-		// Update history entries
-		self.history.update().await;
-
 		match event {
 			// Control Keys
 			Event::Key(KeyEvent {
