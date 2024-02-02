@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use crossterm::{
-	cursor, event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, terminal::{Clear, ClearType::*}, ExecutableCommand, QueueableCommand
+	cursor, event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, terminal::{Clear, ClearType::*}, QueueableCommand
 };
 
 use unicode_segmentation::UnicodeSegmentation;
