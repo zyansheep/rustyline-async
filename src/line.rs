@@ -169,9 +169,10 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	pub fn update_prompt(&mut self, prompt: String, term: &mut impl Write) -> Result<(), ReadlineError> {
+	pub fn update_prompt(&mut self, prompt: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
 		self.clear(term)?;
-		self.prompt = prompt;
+		self.prompt.clear();
+		self.prompt.push_str(prompt);
 		// recalculates column
 		self.move_cursor(0)?;
 		self.render(term)?;

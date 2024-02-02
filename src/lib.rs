@@ -225,7 +225,7 @@ impl Readline {
 	}
 
 	/// Change the prompt
-	pub fn update_prompt(&mut self, prompt: String) -> Result<(), ReadlineError> {
+	pub fn update_prompt(&mut self, prompt: &str) -> Result<(), ReadlineError> {
 		self.line.update_prompt(prompt, &mut self.raw_term)?;
 		Ok(())
 	}
