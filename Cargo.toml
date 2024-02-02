@@ -1,6 +1,6 @@
 [package]
 name = "rustyline-async"
-version = "0.4.0"
+version = "0.4.2"
 license = "Unlicense"
 description = "A minimal readline with multiline and async support."
 documentation = "https://docs.rs/rustyline-async"
@@ -27,8 +27,3 @@ simplelog = "0.12.1"
 [features]
 default = ["emacs"]
 emacs = []
-
-[package.metadata.nix]
-build = true
-toolchain = "stable"
-nativeBuildInputs = [ "cargo-edit" ]
