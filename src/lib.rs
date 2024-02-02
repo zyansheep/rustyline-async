@@ -51,7 +51,7 @@ use std::{
 
 use crossterm::{
 	event::EventStream,
-	terminal::{self, disable_raw_mode},
+	terminal::{self, disable_raw_mode, Clear},
 	QueueableCommand,
 };
 use futures_channel::mpsc;
@@ -222,6 +222,14 @@ impl Readline {
 				buffer: Vec::new(),
 			},
 		))
+	}
+
+	/// Clear the screen
+	pub fn clear(&mut self) -> Result<(), ReadlineError> {
+		self.raw_term.queue(Clear(terminal::ClearType::All))?;
+		self.line.clear_and_render(&mut self.raw_term)?;
+		self.raw_term.flush()?;
+		Ok(())
 	}
 
 	/// Set maximum history length.  The default length is 1000.
