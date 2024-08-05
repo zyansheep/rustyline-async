@@ -67,6 +67,14 @@ I use NixOS btw
 its pretty cool
 							")?;
 						}
+            "help" => {
+              writeln!(stdout,
+r"Commands:
+start <task|logging|printouts>
+stop <task|logging|printouts>
+info
+help")?;
+            }
 						_ => writeln!(stdout, "Command not found: \"{}\"", line)?,
 					}
 				},
