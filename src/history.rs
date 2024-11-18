@@ -31,12 +31,10 @@ impl History {
 		if let Some(line) = self.receiver.next().await {
 			// Reset offset to newest entry
 			self.current_position = None;
-
 			// Don't add entry if last entry was same, or line was empty.
 			if self.entries.front() == Some(&line) || line.is_empty() {
 				return;
 			}
-
 			// Add entry to front of history
 			self.entries.push_front(line);
 			// Check if already have enough entries
@@ -45,6 +43,11 @@ impl History {
 				self.entries.pop_back();
 			}
 		}
+	}
+
+	// Sets the history position back to the start.
+	pub fn reset_position(&mut self) {
+		self.current_position = None;
 	}
 
 	// Find next history that matches a given string from an index
