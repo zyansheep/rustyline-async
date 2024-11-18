@@ -29,14 +29,16 @@ impl History {
 	pub async fn update(&mut self) {
 		// Receive a new line
 		if let Some(line) = self.receiver.next().await {
+			// Reset offset to newest entry
+			self.current_position = None;
+
 			// Don't add entry if last entry was same, or line was empty.
 			if self.entries.front() == Some(&line) || line.is_empty() {
 				return;
 			}
+
 			// Add entry to front of history
 			self.entries.push_front(line);
-			// Reset offset to newest entry
-			self.current_position = None;
 			// Check if already have enough entries
 			if self.entries.len() > self.max_size {
 				// Remove oldest entry
