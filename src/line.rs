@@ -324,6 +324,7 @@ impl LineState {
 					// Render new line from beginning
 					self.move_cursor(-100000)?;
 					self.clear_and_render(term)?;
+					self.history.reset_position();
 
 					// Return line
 					return Ok(Some(ReadlineEvent::Line(line)));
