@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 pub struct History {
+	// Note: old entries in front, new ones at the back.
 	pub entries: VecDeque<String>,
 	pub max_size: usize,
 	current_position: Option<usize>,
@@ -21,15 +22,15 @@ impl History {
 		// Reset offset to newest entry
 		self.current_position = None;
 		// Don't add entry if last entry was same, or line was empty.
-		if self.entries.front() == Some(&line) || line.is_empty() {
+		if self.entries.back() == Some(&line) || line.is_empty() {
 			return;
 		}
-		// Add entry to front of history
-		self.entries.push_front(line);
+		// Add entry to back of history
+		self.entries.push_back(line);
 		// Check if already have enough entries
 		if self.entries.len() > self.max_size {
 			// Remove oldest entry
-			self.entries.pop_back();
+			self.entries.pop_front();
 		}
 	}
 
@@ -41,25 +42,26 @@ impl History {
 	// Find next history that matches a given string from an index
 	pub fn search_next(&mut self, _current: &str) -> Option<&str> {
 		if let Some(index) = &mut self.current_position {
-			if *index < self.entries.len() - 1 {
-				*index += 1;
+			if *index > 0 {
+				*index -= 1;
 			}
 			Some(&self.entries[*index])
-		} else if !self.entries.is_empty() {
-			self.current_position = Some(0);
-			Some(&self.entries[0])
+		} else if let Some(last) = self.entries.back() {
+			self.current_position = Some(self.entries.len() - 1);
+			Some(last)
 		} else {
 			None
 		}
 	}
+
 	// Find previous history item that matches a given string from an index
 	pub fn search_previous(&mut self, _current: &str) -> Option<&str> {
 		if let Some(index) = &mut self.current_position {
-			if *index == 0 {
+			if *index == self.entries.len() - 1 {
 				self.current_position = None;
 				return Some("");
 			}
-			*index -= 1;
+			*index += 1;
 			Some(&self.entries[*index])
 		} else {
 			None
