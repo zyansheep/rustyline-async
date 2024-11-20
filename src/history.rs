@@ -1,24 +1,15 @@
 use std::collections::VecDeque;
 
-use futures_channel::mpsc::{self, UnboundedReceiver, UnboundedSender};
-use futures_util::StreamExt;
-
 pub struct History {
 	pub entries: VecDeque<String>,
 	pub max_size: usize,
-	pub sender: UnboundedSender<String>,
-	receiver: UnboundedReceiver<String>,
-
 	current_position: Option<usize>,
 }
 impl Default for History {
 	fn default() -> Self {
-		let (sender, receiver) = mpsc::unbounded();
 		Self {
 			entries: Default::default(),
 			max_size: 1000,
-			sender,
-			receiver,
 			current_position: Default::default(),
 		}
 	}
@@ -26,22 +17,19 @@ impl Default for History {
 
 impl History {
 	// Update history entries
-	pub async fn update(&mut self) {
-		// Receive a new line
-		if let Some(line) = self.receiver.next().await {
-			// Reset offset to newest entry
-			self.current_position = None;
-			// Don't add entry if last entry was same, or line was empty.
-			if self.entries.front() == Some(&line) || line.is_empty() {
-				return;
-			}
-			// Add entry to front of history
-			self.entries.push_front(line);
-			// Check if already have enough entries
-			if self.entries.len() > self.max_size {
-				// Remove oldest entry
-				self.entries.pop_back();
-			}
+	pub fn add_entry(&mut self, line: String) {
+		// Reset offset to newest entry
+		self.current_position = None;
+		// Don't add entry if last entry was same, or line was empty.
+		if self.entries.front() == Some(&line) || line.is_empty() {
+			return;
+		}
+		// Add entry to front of history
+		self.entries.push_front(line);
+		// Check if already have enough entries
+		if self.entries.len() > self.max_size {
+			// Remove oldest entry
+			self.entries.pop_back();
 		}
 	}
 
@@ -84,12 +72,9 @@ impl History {
 async fn test_history() {
 	let mut history = History::default();
 
-	history.sender.unbounded_send("foo".into()).unwrap();
-	history.update().await;
-	history.sender.unbounded_send("bar".into()).unwrap();
-	history.update().await;
-	history.sender.unbounded_send("baz".into()).unwrap();
-	history.update().await;
+	history.add_entry("foo".into());
+	history.add_entry("bar".into());
+	history.add_entry("baz".into());
 
 	for _ in 0..2 {
 		// Previous will navigate nowhere.
@@ -132,14 +117,10 @@ async fn test_history_limit() {
 		..Default::default()
 	};
 
-	history.sender.unbounded_send("foo".into()).unwrap();
-	history.update().await;
-	history.sender.unbounded_send("bar".into()).unwrap();
-	history.update().await;
-	history.sender.unbounded_send("baz".into()).unwrap();
-	history.update().await;
-	history.sender.unbounded_send("qux".into()).unwrap(); // Should remove "foo".
-	history.update().await;
+	history.add_entry("foo".into());
+	history.add_entry("bar".into());
+	history.add_entry("baz".into());
+	history.add_entry("qux".into()); // Should remove "foo".
 
 	assert_eq!(Some("qux"), history.search_next(""));
 	assert_eq!(Some("baz"), history.search_next(""));
