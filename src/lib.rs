@@ -43,10 +43,7 @@
 //! - Ctrl-C: Send an `Interrupt` event
 
 use std::{
-	io::{self, stdout, Stdout, Write},
-	ops::DerefMut,
-	pin::Pin,
-	task::{Context, Poll},
+	collections::VecDeque, fs::File, io::{self, stdout, BufRead, BufReader, BufWriter, Stdout, Write}, ops::DerefMut, path::Path, pin::Pin, task::{Context, Poll}
 };
 
 use crossterm::{
@@ -234,8 +231,7 @@ impl Readline {
 
 	/// Set maximum history length.  The default length is 1000.
 	pub fn set_max_history(&mut self, max_size: usize) {
-		self.line.history.max_size = max_size;
-		self.line.history.entries.truncate(max_size);
+		self.line.history.set_max_size(max_size);
 	}
 
 	/// Set whether the input line should remain on the screen after
@@ -300,6 +296,47 @@ impl Readline {
 		self.line.history.add_entry(entry);
 		// Return value to keep compatibility with previous API.
 		Some(())
+	}
+
+	/// Returns the entries of the history in the order they were added in.
+	pub fn get_history_entries(&self) -> &VecDeque<String> {
+		self.line.history.get_entries()
+	}
+
+	/// Replaces the current history.
+	pub fn set_history_entries(&mut self, entries: impl IntoIterator<Item = String>) {
+		self.line.history.set_entries(entries);
+	}
+
+	/// Clears the current history.
+	pub fn clear_history(&mut self) {
+		self.set_history_entries([]);
+	}
+
+	/// Saves the history as a plain text file.
+	pub fn save_history(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+		let file = File::create(path)?;
+		let mut writer = BufWriter::new(file);
+
+		for line in self.get_history_entries() {
+			writeln!(writer, "{line}")?;
+		}
+
+		Ok(())
+	}
+
+	/// Loads the history from a plain text file.
+	pub fn load_history(&mut self, path: impl AsRef<Path>) -> std::io::Result<()> {
+		let file = File::open(path)?;
+		let reader = BufReader::new(file);
+
+		self.clear_history();
+
+		for line in reader.lines() {
+			self.add_history_entry(line?);
+		}
+
+		Ok(())
 	}
 }
 
