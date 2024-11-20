@@ -54,7 +54,6 @@ use crossterm::{
 	terminal::{self, disable_raw_mode, Clear},
 	QueueableCommand,
 };
-use futures_channel::mpsc;
 use futures_util::{pin_mut, ready, select, AsyncWrite, FutureExt, StreamExt};
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
@@ -189,10 +188,7 @@ pub struct Readline {
 	raw_term: Stdout,
 	event_stream: EventStream, // Stream of events
 	line_receiver: Receiver<Vec<u8>>,
-
 	line: LineState, // Current line
-
-	history_sender: mpsc::UnboundedSender<String>,
 }
 
 impl Readline {
@@ -203,14 +199,12 @@ impl Readline {
 		terminal::enable_raw_mode()?;
 
 		let line = LineState::new(prompt, terminal::size()?);
-		let history_sender = line.history.sender.clone();
 
 		let mut readline = Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
 			line,
-			history_sender,
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
@@ -297,14 +291,15 @@ impl Readline {
 					},
 					None => return Err(ReadlineError::Closed),
 				},
-				_ = self.line.history.update().fuse() => {}
 			}
 		}
 	}
 
 	/// Add a line to the input history
 	pub fn add_history_entry(&mut self, entry: String) -> Option<()> {
-		self.history_sender.unbounded_send(entry).ok()
+		self.line.history.add_entry(entry);
+		// Return value to keep compatibility with previous API.
+		Some(())
 	}
 }
 

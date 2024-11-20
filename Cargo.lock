@@ -691,7 +691,6 @@ version = "0.4.3"
 dependencies = [
  "async-std",
  "crossterm",
- "futures-channel",
  "futures-util",
  "log",
  "pin-project",
