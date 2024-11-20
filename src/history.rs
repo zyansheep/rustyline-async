@@ -78,3 +78,71 @@ impl History {
 		}
 	}
 }
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_history() {
+	let mut history = History::default();
+
+	history.sender.unbounded_send("foo".into()).unwrap();
+	history.update().await;
+	history.sender.unbounded_send("bar".into()).unwrap();
+	history.update().await;
+	history.sender.unbounded_send("baz".into()).unwrap();
+	history.update().await;
+
+	for _ in 0..2 {
+		// Previous will navigate nowhere.
+		assert_eq!(None, history.search_previous(""));
+
+		// Going back in history.
+		assert_eq!(Some("baz"), history.search_next(""));
+		assert_eq!(Some("bar"), history.search_next(""));
+		assert_eq!(Some("foo"), history.search_next(""));
+
+		// Last entry should just repeat.
+		assert_eq!(Some("foo"), history.search_next(""));
+
+		// Going forward.
+		assert_eq!(Some("bar"), history.search_previous(""));
+		assert_eq!(Some("baz"), history.search_previous(""));
+
+		// Alternate.
+		assert_eq!(Some("bar"), history.search_next(""));
+		assert_eq!(Some("baz"), history.search_previous(""));
+
+		// Back to the beginning. Should return "" once.
+		assert_eq!(Some(""), history.search_previous(""));
+		assert_eq!(None, history.search_previous(""));
+
+		// Going back again.
+		assert_eq!(Some("baz"), history.search_next(""));
+		assert_eq!(Some("bar"), history.search_next(""));
+
+		// Resetting the position.
+		history.reset_position();
+	}
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn test_history_limit() {
+	let mut history = History {
+		max_size: 3,
+		..Default::default()
+	};
+
+	history.sender.unbounded_send("foo".into()).unwrap();
+	history.update().await;
+	history.sender.unbounded_send("bar".into()).unwrap();
+	history.update().await;
+	history.sender.unbounded_send("baz".into()).unwrap();
+	history.update().await;
+	history.sender.unbounded_send("qux".into()).unwrap(); // Should remove "foo".
+	history.update().await;
+
+	assert_eq!(Some("qux"), history.search_next(""));
+	assert_eq!(Some("baz"), history.search_next(""));
+	assert_eq!(Some("bar"), history.search_next(""));
+	assert_eq!(Some("bar"), history.search_next(""));
+}
