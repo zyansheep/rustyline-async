@@ -43,10 +43,7 @@
 //! - Ctrl-C: Send an `Interrupt` event
 
 use std::{
-	io::{self, stdout, Stdout, Write},
-	ops::DerefMut,
-	pin::Pin,
-	task::{Context, Poll},
+	collections::VecDeque, fs::File, io::{self, stdout, BufRead, BufReader, BufWriter, Stdout, Write}, ops::DerefMut, path::Path, pin::Pin, task::{Context, Poll}
 };
 
 use crossterm::{
@@ -54,7 +51,6 @@ use crossterm::{
 	terminal::{self, disable_raw_mode, Clear},
 	QueueableCommand,
 };
-use futures_channel::mpsc;
 use futures_util::{pin_mut, ready, select, AsyncWrite, FutureExt, StreamExt};
 use thingbuf::mpsc::{errors::TrySendError, Receiver, Sender};
 use thiserror::Error;
@@ -189,10 +185,7 @@ pub struct Readline {
 	raw_term: Stdout,
 	event_stream: EventStream, // Stream of events
 	line_receiver: Receiver<Vec<u8>>,
-
 	line: LineState, // Current line
-
-	history_sender: mpsc::UnboundedSender<String>,
 }
 
 impl Readline {
@@ -203,14 +196,12 @@ impl Readline {
 		terminal::enable_raw_mode()?;
 
 		let line = LineState::new(prompt, terminal::size()?);
-		let history_sender = line.history.sender.clone();
 
 		let mut readline = Readline {
 			raw_term: stdout(),
 			event_stream: EventStream::new(),
 			line_receiver,
 			line,
-			history_sender,
 		};
 		readline.line.render(&mut readline.raw_term)?;
 		readline.raw_term.queue(terminal::EnableLineWrap)?;
@@ -240,8 +231,7 @@ impl Readline {
 
 	/// Set maximum history length.  The default length is 1000.
 	pub fn set_max_history(&mut self, max_size: usize) {
-		self.line.history.max_size = max_size;
-		self.line.history.entries.truncate(max_size);
+		self.line.history.set_max_size(max_size);
 	}
 
 	/// Set whether the input line should remain on the screen after
@@ -297,14 +287,56 @@ impl Readline {
 					},
 					None => return Err(ReadlineError::Closed),
 				},
-				_ = self.line.history.update().fuse() => {}
 			}
 		}
 	}
 
 	/// Add a line to the input history
 	pub fn add_history_entry(&mut self, entry: String) -> Option<()> {
-		self.history_sender.unbounded_send(entry).ok()
+		self.line.history.add_entry(entry);
+		// Return value to keep compatibility with previous API.
+		Some(())
+	}
+
+	/// Returns the entries of the history in the order they were added in.
+	pub fn get_history_entries(&self) -> &VecDeque<String> {
+		self.line.history.get_entries()
+	}
+
+	/// Replaces the current history.
+	pub fn set_history_entries(&mut self, entries: impl IntoIterator<Item = String>) {
+		self.line.history.set_entries(entries);
+	}
+
+	/// Clears the current history.
+	pub fn clear_history(&mut self) {
+		self.set_history_entries([]);
+	}
+
+	/// Saves the history as a plain text file.
+	pub fn save_history(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+		let file = File::create(path)?;
+		let mut writer = BufWriter::new(file);
+
+		for line in self.get_history_entries() {
+			writeln!(writer, "{line}")?;
+		}
+
+		Ok(())
+	}
+
+	/// Loads the history from a plain text file.
+	pub fn load_history(&mut self, path: impl AsRef<Path>) -> std::io::Result<()> {
+		let file = File::open(path)?;
+		let reader = BufReader::new(file);
+
+		self.clear_history();
+
+		for line in reader.lines() {
+			self.add_history_entry(line?);
+		}
+
+		Ok(())
 	}
 }
 
