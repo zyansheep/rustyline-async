@@ -43,7 +43,7 @@
 //! - Ctrl-C: Send an `Interrupt` event
 
 use std::{
-	collections::VecDeque, fs::File, io::{self, stdout, BufRead, BufReader, BufWriter, Stdout, Write}, ops::DerefMut, path::Path, pin::Pin, task::{Context, Poll}
+	collections::VecDeque, io::{self, stdout, Stdout, Write}, ops::DerefMut, pin::Pin, task::{Context, Poll}
 };
 
 use crossterm::{
@@ -311,32 +311,6 @@ impl Readline {
 	/// Clears the current history.
 	pub fn clear_history(&mut self) {
 		self.set_history_entries([]);
-	}
-
-	/// Saves the history as a plain text file.
-	pub fn save_history(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
-		let file = File::create(path)?;
-		let mut writer = BufWriter::new(file);
-
-		for line in self.get_history_entries() {
-			writeln!(writer, "{line}")?;
-		}
-
-		Ok(())
-	}
-
-	/// Loads the history from a plain text file.
-	pub fn load_history(&mut self, path: impl AsRef<Path>) -> std::io::Result<()> {
-		let file = File::open(path)?;
-		let reader = BufReader::new(file);
-
-		self.clear_history();
-
-		for line in reader.lines() {
-			self.add_history_entry(line?);
-		}
-
-		Ok(())
 	}
 }
 
