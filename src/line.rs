@@ -1,7 +1,10 @@
 use std::io::{self, Write};
 
 use crossterm::{
-	cursor, event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers}, terminal::{Clear, ClearType::*}, QueueableCommand
+	cursor,
+	event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+	terminal::{Clear, ClearType::*},
+	QueueableCommand,
 };
 
 use unicode_segmentation::UnicodeSegmentation;
@@ -169,7 +172,11 @@ impl LineState {
 		self.print_data(string.as_bytes(), term)?;
 		Ok(())
 	}
-	pub fn update_prompt(&mut self, prompt: &str, term: &mut impl Write) -> Result<(), ReadlineError> {
+	pub fn update_prompt(
+		&mut self,
+		prompt: &str,
+		term: &mut impl Write,
+	) -> Result<(), ReadlineError> {
 		self.clear(term)?;
 		self.prompt.clear();
 		self.prompt.push_str(prompt);

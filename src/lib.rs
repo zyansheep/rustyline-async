@@ -43,7 +43,11 @@
 //! - Ctrl-C: Send an `Interrupt` event
 
 use std::{
-	collections::VecDeque, io::{self, stdout, Stdout, Write}, ops::DerefMut, pin::Pin, task::{Context, Poll}
+	collections::VecDeque,
+	io::{self, stdout, Stdout, Write},
+	ops::DerefMut,
+	pin::Pin,
+	task::{Context, Poll},
 };
 
 use crossterm::{
