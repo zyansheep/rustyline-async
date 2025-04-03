@@ -41,7 +41,7 @@ impl LineState {
 		Self {
 			prompt,
 			last_line_completed: true,
-			term_size,
+			term_size: (term_size.0.max(1), term_size.1),
 			current_column,
 			should_print_line_on_enter: true,
 			should_print_line_on_control_c: true,
