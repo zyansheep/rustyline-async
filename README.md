@@ -15,7 +15,7 @@ Inspired by [`rustyline`](https://crates.io/crates/rustyline),
  * Works on all platforms supported by `crossterm`.
  * Full Unicode Support (Including Grapheme Clusters)
  * Multiline Editing
- * In-memory History
+ * History + Saving/Loading APIs
  * Ctrl-C, Ctrl-D are returned as `Ok(Interrupt)` and `Ok(Eof)` `ReadlineEvent`s.
  * Ctrl-U to clear line before cursor
  * Ctrl-left & right to move to next or previous whitespace
