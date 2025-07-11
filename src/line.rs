@@ -21,7 +21,7 @@ fn get_sanitized_size(message: &str) -> u16 {
 			if let Some(next) = prompt_stream.next() {
 				if next == "[" {
 					while let Some(c) = prompt_stream.next() {
-						if c == "m" {
+						if c.is_ascii() && (0x40..=0x7E).contains(&c.as_bytes()[0]) {
 							break;
 						}
 					}
