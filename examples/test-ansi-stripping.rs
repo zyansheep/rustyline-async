@@ -1,13 +1,10 @@
 // This example tests the functionality of stripping ANSI escape codes
-// and reducing multi-byte characters to single character spaces in the
-// prompt line.
+// from the prompt length calculations.
 //
 // Testing should be done by running the example and checking if the
 // prompt line is displayed correctly with color and that the cursor position
 // is correct when the program first runs, when a line is entered,
 // and when control-C is pressed.
-//
-// Note: This example requires unicode support in the terminal to render properly.
 
 use rustyline_async::{Readline, ReadlineEvent};
 use std::io::Write;
@@ -16,7 +13,7 @@ use tokio::time::sleep;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	let (mut rl, mut stdout) = Readline::new("\x1b[1;31m🢡🢡🢡 \x1b[0m".into())?;
+	let (mut rl, mut stdout) = Readline::new("\x1b[1;31m>>> \x1b[0m".into())?;
 
 	rl.should_print_line_on(false, false);
 
