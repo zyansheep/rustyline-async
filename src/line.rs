@@ -7,32 +7,10 @@ use crossterm::{
 	QueueableCommand,
 };
 
+use ansi_width::ansi_width;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 use crate::{History, ReadlineError, ReadlineEvent};
-
-/// Get the size of a string in Unicode graphemes, ignoring ANSI CSI codes.
-fn get_sanitized_size(message: &str) -> u16 {
-	let mut prompt_len = 0;
-	let mut prompt_stream = message.graphemes(true);
-	while let Some(grapheme) = prompt_stream.next() {
-		if grapheme == "\x1b" {
-			if let Some(next) = prompt_stream.next() {
-				if next == "[" {
-					while let Some(c) = prompt_stream.next() {
-						if c.is_ascii() && (0x40..=0x7E).contains(&c.as_bytes()[0]) {
-							break;
-						}
-					}
-				}
-			}
-		} else {
-			prompt_len += UnicodeWidthStr::width(grapheme);
-		}
-	}
-	prompt_len as u16
-}
 
 #[derive(Default)]
 pub struct LineState {
@@ -60,7 +38,7 @@ pub struct LineState {
 
 impl LineState {
 	pub fn new(prompt: String, term_size: (u16, u16)) -> Self {
-		let prompt_len = get_sanitized_size(&prompt);
+		let prompt_len = ansi_width(&prompt) as u16;
 		Self {
 			prompt,
 			prompt_len,
@@ -108,7 +86,7 @@ impl LineState {
 		}
 		let (pos, str) = self.current_grapheme().unwrap_or((0, ""));
 		let pos = pos + str.len();
-		self.current_column = self.prompt_len + UnicodeWidthStr::width(&self.line[0..pos]) as u16;
+		self.current_column = self.prompt_len + ansi_width(&self.line[0..pos]) as u16;
 
 		Ok(())
 	}
@@ -143,7 +121,7 @@ impl LineState {
 	/// Render line
 	pub fn render(&self, term: &mut impl Write) -> io::Result<()> {
 		write!(term, "{}{}", self.prompt, self.line)?;
-		let line_len = self.prompt_len + UnicodeWidthStr::width(&self.line[..]) as u16;
+		let line_len = self.prompt_len + ansi_width(&self.line[..]) as u16;
 		self.move_to_beginning(term, line_len)?;
 		self.move_from_beginning(term, self.current_column)?;
 		Ok(())
@@ -175,7 +153,7 @@ impl LineState {
 		// If data does not end with newline, save the cursor and write newline for prompt
 		// Usually data does end in newline due to the buffering of SharedWriter, but sometimes it may not (i.e. if .flush() is called)
 		if !self.last_line_completed {
-			self.last_line_length += get_sanitized_size(&String::from_utf8_lossy(data)) as usize;
+			self.last_line_length += ansi_width(&String::from_utf8_lossy(data));
 			// Make sure that last_line_length wraps around when doing multiple writes
 			if self.last_line_length >= self.term_size.0 as usize {
 				self.last_line_length %= self.term_size.0 as usize;

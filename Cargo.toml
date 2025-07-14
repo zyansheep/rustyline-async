@@ -15,7 +15,7 @@ pin-project = "1.1"
 thingbuf = "0.1"
 thiserror = "2.0.12"
 unicode-segmentation = "1.12"
-unicode-width = "0.2.0"
+ansi-width = "0.1.0"
 
 [dev-dependencies]
 async-std = { version = "1.13.1", features = ["unstable", "attributes"] }
