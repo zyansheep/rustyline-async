@@ -1,11 +1,3 @@
-// This example tests the functionality of stripping ANSI escape codes
-// from the prompt length calculations.
-//
-// Testing should be done by running the example and checking if the
-// prompt line is displayed correctly with color and that the cursor position
-// is correct when the program first runs, when a line is entered,
-// and when control-C is pressed.
-
 use rustyline_async::{Readline, ReadlineEvent};
 use std::io::Write;
 use std::time::Duration;
