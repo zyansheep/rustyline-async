@@ -181,6 +181,7 @@ impl LineState {
 		self.clear(term)?;
 		self.prompt.clear();
 		self.prompt.push_str(prompt);
+		self.prompt_len = ansi_width(&self.prompt) as u16;
 		// recalculates column
 		self.move_cursor(0)?;
 		self.render(term)?;
