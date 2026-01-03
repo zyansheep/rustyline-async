@@ -70,7 +70,8 @@ impl LineState {
 		if line_height != 0 {
 			term.queue(cursor::MoveDown(line_height))?;
 		}
-		term.queue(cursor::MoveRight(line_remaining_len))?;
+		// Use absolute positioning to prevent cursor drift with async output
+		term.queue(cursor::MoveToColumn(line_remaining_len))?;
 
 		Ok(())
 	}
